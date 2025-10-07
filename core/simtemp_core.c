@@ -4,12 +4,15 @@
 
 int simtemp_core_init(void)
 {
+    printk(KERN_INFO "simtemp driver\n");
     printk(KERN_INFO "driver montado\n");
+
     return 0;
 }
 
 void simtemp_core_exit(void)
 {
+    printk(KERN_INFO "simtemp driver\n");
     printk(KERN_INFO "driver desmontado\n");
 }
 
