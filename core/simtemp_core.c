@@ -11,6 +11,13 @@
 /*OWn includes */
 #include "simtemp.h"
 
+/*Header Functions*/
+static int simtemp_open(struct inode *inode, struct file *file);
+static int simtemp_release(struct inode *inode, struct file *file);
+static ssize_t simtemp_read(struct file *file, char __user *buf, size_t count, loff_t *ppos);
+static unsigned int simtemp_poll(struct file *file, poll_table *wait);
+
+
 /*Global Variables*/
 static const struct file_operations simtemp_fops =
 {
@@ -29,15 +36,17 @@ struct simtemp_dev simtemp_DeviceContext; /*Device  Context*/
 
 /************* Functions **************** */
 
-static init __init simtemp_module_init(void)
+static int __init simtemp_module_init(void)
 {
     int state;
-    memset(&simtemp_dev, 0, sizeof(simtemp_dev));
+    memset(&simtemp_DeviceContext, 0, sizeof(simtemp_DeviceContext));
     
     /* Setting initial state*/
     simtemp_DeviceContext.miscdev.name = "simtemp";
     simtemp_DeviceContext.miscdev.minor = MISC_DYNAMIC_MINOR;
     simtemp_DeviceContext.mode = SIMTEMP_MODE_ONESHOT;
+    
+    return 0;
 }
 
 static void __exit simtemp_module_exit(void)
