@@ -38,7 +38,6 @@ struct simtemp_dev simtemp_DeviceContext; /*Device  Context*/
 
 static int __init simtemp_module_init(void)
 {
-    int state;
     memset(&simtemp_DeviceContext, 0, sizeof(simtemp_DeviceContext));
     
     /* Setting initial state*/
