@@ -16,6 +16,8 @@ KDIR ?= /home/fideu/WSL2-Linux-Kernel
 obj-m := simtemp.o
 simtemp-objs := core/simtemp_core.o
 
+ccflags-y += -I$(src)/include
+
 all:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
