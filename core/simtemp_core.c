@@ -45,6 +45,7 @@ static int __init simtemp_module_init(void)
     /* Setting initial state*/
     simtemp_DeviceContext.miscdev.name = "simtemp";
     simtemp_DeviceContext.miscdev.minor = MISC_DYNAMIC_MINOR;
+    simtemp_DeviceContext.miscdev.fops = &simtemp_fops;
     simtemp_DeviceContext.mode = SIMTEMP_MODE_ONESHOT;
 
     intRegisterResult = misc_register(&simtemp_DeviceContext.miscdev);
