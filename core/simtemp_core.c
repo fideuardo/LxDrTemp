@@ -38,13 +38,22 @@ struct simtemp_dev simtemp_DeviceContext; /*Device  Context*/
 
 static int __init simtemp_module_init(void)
 {
+    int intRegisterResult = 0;
+    
     memset(&simtemp_DeviceContext, 0, sizeof(simtemp_DeviceContext));
     
     /* Setting initial state*/
     simtemp_DeviceContext.miscdev.name = "simtemp";
     simtemp_DeviceContext.miscdev.minor = MISC_DYNAMIC_MINOR;
     simtemp_DeviceContext.mode = SIMTEMP_MODE_ONESHOT;
-    
+
+    intRegisterResult = misc_register(&simtemp_DeviceContext.miscdev);
+
+    if(intRegisterResult)
+    {
+        return intRegisterResult;
+    }
+
     return 0;
 }
 
