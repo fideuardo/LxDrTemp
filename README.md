@@ -1,12 +1,32 @@
-# LxDrTemp
-Linux Driver Temperature Demo
+# LxDrTemp: Linux Driver Temperature Demo
+Author: Fidel Cabañas (fideuardo@gmail.com)
 
 ## Development Environment
 
-### Prerequisites
+### Windows (WSL)
 
-- Docker (Pending)
+* For install WSL refet to: [Install WSL](https://learn.microsoft.com/es-es/windows/wsl/install)
 
+* Install WSL2-Linux-Kernel Pending
+
+
+### Linux (ubuntu 24.04)
+
+* install kernel header
+```bash
+sudo apt install linux-headers-$(uname -r)
+```
+* Install buid essential
+
+```bash
+sudo apt install build-essential
+```
+* Install addtional packages
+```bash
+sudo apt install dkms libelf-dev
+```
+### Raspberry
+Pending
 ### Installation
 
 ## Test
