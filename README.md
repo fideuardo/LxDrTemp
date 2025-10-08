@@ -5,31 +5,57 @@ Linux Driver Temperature Demo
 
 ### Prerequisites
 
-- Docker
+- Docker (Pending)
 
 ### Installation
 
-1. **Build the Docker image:**
+## Test
 
-   Open a terminal in the project root directory (`LxDrTemp`) and run the following command. This will create a Docker image named `lxdrtemp-dev` with all the necessary tools and dependencies.
+* **Build the driver source code:**
+```bash
+make
+```
 
-   ```bash
-   docker build -t lxdrtemp-dev .
-   ```
+* **Clean the build artifacts:**
+```bash
+make clean
+```
 
-2. **Run the Docker container:**
+* **Load the driver into the kernel:**
+```bash
+sudo insmod simtemp.ko
+```
 
-   After the image is built, start an interactive container session. This command mounts the current project directory on your host machine into the `/usr/src/app` directory inside the container. This means any changes you make to the files in the project directory will be reflected inside the container.
+* **Unload the driver from the kernel:**
+```bash
+sudo rmmod simtemp
+```
 
-   ```bash
-   # For Windows (Command Prompt)
-   docker run -it -v "%cd%:/usr/src/app" lxdrtemp-dev /bin/bash
+* **Check that the device was created and show its permissions:**
+```bash
+ls -l /dev/simtemp
+```
 
-   # For Windows (PowerShell)
-   docker run -it -v "${PWD}:/usr/src/app" lxdrtemp-dev /bin/bash
+* **Read one block of data from the device and save it to `sample.bin`:**
+```bash
+dd if=/dev/simtemp of=sample.bin bs=32 count=1
+```
 
-   # For Linux or macOS
-   docker run -it -v "$(pwd):/usr/src/app" lxdrtemp-dev /bin/bash
-   ```
+* **Display the content of the read data in hexadecimal format:**
+```bash
+hexdump -C sample.bin
+```
 
-   You will now be inside the container's shell, ready to compile and work with the driver.
+* **Demonstrate the "one-shot" behavior. This command won't read anything new on a second run:**
+```bash
+cat /dev/simtemp > /dev/null 
+```
+
+
+
+
+
+
+
+
+
