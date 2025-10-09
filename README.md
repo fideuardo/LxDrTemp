@@ -7,7 +7,10 @@ Author: Fidel Cabañas (fideuardo@gmail.com)
 
 * For install WSL refet to: [Install WSL](https://learn.microsoft.com/es-es/windows/wsl/install)
 
-* Install WSL2-Linux-Kernel Pending
+* Install WSL2-Linux-Kernel
+
+    Install the kernel headers in the path: */lib/modules/$(shell uname -r)/*
+
 
 
 ### Linux (ubuntu 24.04)
