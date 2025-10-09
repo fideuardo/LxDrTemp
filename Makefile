@@ -11,7 +11,7 @@
 # as a kernel module.
 #
 
-KDIR ?= /home/fideu/WSL2-Linux-Kernel
+KDIR ?= /lib/modules/$(shell uname -r)/build
 
 obj-m := simtemp.o
 simtemp-objs := core/simtemp_core.o
