@@ -14,7 +14,7 @@
 KDIR ?= /lib/modules/$(shell uname -r)/build
 
 obj-m := simtemp.o
-simtemp-objs := core/simtemp_core.o
+simtemp-objs := core/simtemp_core.o core/simtemp_ringbuf.o
 
 ccflags-y += -I$(src)/include
 

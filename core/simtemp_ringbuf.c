@@ -1,0 +1,146 @@
+/*Kernel includes*/
+#include <linux/slab.h>
+#include <linux/string.h>
+
+/*own includes*/
+#include "simtemp.h"
+
+/*--------------------------------------------------------------------------------------------------------*/
+/*int  simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff     -> Ring Buffer structure        */
+/*                                                      u32 u32BufferSize -> Buffer Size                  */ 
+/*                                                      bool boDropOldest -> Overwritting is enable       */
+/*  Return:      0 -> Buffer was initialized properly                                                     */
+/*         -EINVAL -> Invalid Argument                                                                    */
+/*         -ENOMEM -> Out of memory                                                                       */
+/*--------------------------------------------------------------------------------------------------------*/
+int  simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff, u32 u32BufferSize, bool boDropOldest)
+{
+    /*Size validation for ring buffer implementation*/
+    if(0 == u32BufferSize )
+    {
+        return -EINVAL;
+    }
+    /*Assigning memory address */
+    srRingBuff->stBuffer = kmalloc((sizeof(struct stsimptemp_sample_v1) * u32BufferSize), GFP_KERNEL | __GFP_ZERO);
+    
+    /*Validate if memory block was assigned*/
+    if(NULL == srRingBuff->stBuffer)
+    {
+        return -ENOMEM;
+    }
+
+    /*Adding functional parameters*/
+
+    srRingBuff->u32BufferSize = u32BufferSize;
+    srRingBuff->u32head = 0;
+    srRingBuff->u32tail = 0;
+    srRingBuff->u32OverRuns = 0;
+    srRingBuff->boDropOldest = boDropOldest;
+    /*Init the spin_lock*/
+    spin_lock_init(&srRingBuff->lock);
+
+    return 0;
+}
+
+void simtemp_ringbuffer_free(struct simtemp_ringbuffer *srRingBuff)
+{
+    kfree(srRingBuff->stBuffer);
+    srRingBuff->stBuffer = NULL;
+    srRingBuff->u32BufferSize = 0;
+}
+
+static u32 simtemp__u32levellock(struct simtemp_ringbuffer *srRingBuff)
+{
+    u32 u32value;
+    u32value = srRingBuff->u32head - srRingBuff->u32tail;
+    return u32value;
+}
+
+bool simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct stsimptemp_sample_v1 *pstSample)
+{
+    unsigned long ulflags;
+    u32 u32bufferused;
+    u32 u32next;
+    bool status = true;
+
+    /*lock spin: start security zone*/
+    spin_lock_irqsave(&srRingBuff->lock, ulflags);
+    u32bufferused = srRingBuff->u32head - srRingBuff->u32tail;
+
+    /*available space*/
+    if(u32bufferused < srRingBuff->u32BufferSize)
+    {
+       u32next = srRingBuff->u32head % srRingBuff->u32BufferSize;
+       srRingBuff->stBuffer[u32next] = *pstSample;
+       srRingBuff->u32head++;
+    }
+    else
+    {
+         /*Oldest element can be deletedd*/
+        if(true == srRingBuff->boDropOldest)
+        {
+            u32next = srRingBuff->u32head % srRingBuff->u32BufferSize;
+            srRingBuff->stBuffer[u32next] = *pstSample;
+            srRingBuff->u32head++;
+            srRingBuff->u32tail++;
+        }
+        else
+        {
+            srRingBuff->u32OverRuns++;
+            status = false;
+        }
+    }
+    spin_unlock_irqrestore(&srRingBuff->lock, ulflags);
+    return status;
+}
+
+u32 simtemp_ringbuffer_read(struct simtemp_ringbuffer *srRingBuff, struct stsimptemp_sample_v1 *pstSample, u32 u32Count)
+{
+    unsigned long ulflags;
+    u32 u32bufferused;
+    u32 u32next;
+    u32 u32readcount = 0;
+
+    spin_lock_irqsave(&srRingBuff->lock, ulflags);
+
+    u32bufferused = srRingBuff->u32head - srRingBuff->u32tail;
+
+    if (u32Count > u32bufferused)
+    {
+        u32Count = u32bufferused;
+    }
+
+    for (u32readcount = 0; u32readcount < u32Count; u32readcount++)
+    {
+        u32next = srRingBuff->u32tail % srRingBuff->u32BufferSize;
+        pstSample[u32readcount] = srRingBuff->stBuffer[u32next];
+        srRingBuff->u32tail++;
+    }
+
+    spin_unlock_irqrestore(&srRingBuff->lock, ulflags);
+    return u32readcount;
+}
+
+
+bool simtemp_ringbuffer_empty(struct simtemp_ringbuffer *srRingBuff)
+{
+    unsigned long ulflags;
+    bool status = false;
+    spin_lock_irqsave(&srRingBuff->lock, ulflags);
+    if(srRingBuff->u32head == srRingBuff->u32tail)
+    {
+        status = true;
+    }
+    spin_unlock_irqrestore(&srRingBuff->lock, ulflags);
+    return status;
+}
+
+u32 simtemp_ringbuffer_level(struct simtemp_ringbuffer *srRingBuff)
+{
+    unsigned long ulflags;
+    u32 u32value;
+    spin_lock_irqsave(&srRingBuff->lock, ulflags);
+    u32value = simtemp__u32levellock(srRingBuff);
+    spin_unlock_irqrestore(&srRingBuff->lock, ulflags);
+    return u32value;
+}
