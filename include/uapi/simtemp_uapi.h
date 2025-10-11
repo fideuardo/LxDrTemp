@@ -2,16 +2,34 @@
 #define _SIMTEMP_UAPI_H_
 
 #include <linux/types.h>
+#include <linux/ioctl.h>
 
-/* Flags de estado (MVP: solo usamos ONESHOT_DONE) */
-#define SIMTEMP_FLAG_ONESHOT_DONE  (1u << 1) /* one-shot completed on this sample */
-
-/* Nota: mantienes tu nombre y layout; packed fija el ABI binario */
-struct stsimptemp_sample_v1 {
-    __u64 u64TimeStamp_ns;    /* time stamp (nanoseconds) */
-    __u64 u64SequenceNumber;  /* incremental sequence number */
-    __u32 u32temperature_mC;  /* 25.0°C = 25000 mC */
-    __u32 u32StatusFlags;     /* SIMTEMP_FLAG_* */
+/*
+ * ABI v1.0, alineado con MSD_SimTemp.md
+ * Esta es la estructura que el usuario recibe al leer /dev/simtemp
+ */
+struct simtemp_sample_v1 {
+	__u64 ts_ns;           /* CLOCK_MONOTONIC_RAW at enqueue */
+	__s32 temperature_mC;  /* e.g., -40000..150000 mC */
+	__u32 period_us;       /* effective period at capture */
+	__u16 flags;           /* bit0=OK, bit1=OVERFLOW, bit2=THR_EDGE, bit3=ONESHOT_DONE */
+	__u16 rsvd;
 } __attribute__((packed));
+
+/* Flags para el campo 'flags' de la muestra */
+#define SIMTEMP_FLAG_OK            (1u << 0) /* Muestra válida */
+#define SIMTEMP_FLAG_ONESHOT_DONE  (1u << 3) /* Muestra final de una operación one-shot */
+
+/* IOCTL definitions */
+#define SIMTEMP_IOC_MAGIC 'T'
+
+/* Control del estado del muestreador */
+#define SIMTEMP_IOC_START          _IO(SIMTEMP_IOC_MAGIC,  0x01)
+#define SIMTEMP_IOC_STOP           _IO(SIMTEMP_IOC_MAGIC,  0x02)
+
+#define SIMTEMP_IOC_GET_MODE       _IOR(SIMTEMP_IOC_MAGIC, 0x10, __u32)
+#define SIMTEMP_IOC_SET_MODE       _IOW(SIMTEMP_IOC_MAGIC, 0x11, __u32)
+#define SIMTEMP_IOC_GET_PERIOD     _IOR(SIMTEMP_IOC_MAGIC, 0x20, __u32)
+#define SIMTEMP_IOC_SET_PERIOD     _IOW(SIMTEMP_IOC_MAGIC, 0x21, __u32)
 
 #endif /* _SIMTEMP_UAPI_H_ */

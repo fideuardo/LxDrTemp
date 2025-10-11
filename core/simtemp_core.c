@@ -10,11 +10,11 @@
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/hrtimer.h>
-#include <linux/ioctl.h>
 
 
 /*OWn includes */
 #include "simtemp.h"
+#include "uapi/simtemp_uapi.h"
 
 /*Header Functions*/
 static int simtemp_open(struct inode *inode, struct file *file);
@@ -26,15 +26,6 @@ static unsigned int simtemp_poll(struct file *file, poll_table *wait);
 /*Global Variables*/
 /* default ring buffer size (samples) */
 #define SIMTEMP_DEFAULT_RING_SIZE 16
-
-/* IOCTL definitions */
-#define SIMTEMP_IOC_MAGIC 'T'
-#define SIMTEMP_IOC_START          _IO(SIMTEMP_IOC_MAGIC,  0x01)
-#define SIMTEMP_IOC_STOP           _IO(SIMTEMP_IOC_MAGIC,  0x02)
-#define SIMTEMP_IOC_GET_MODE       _IOR(SIMTEMP_IOC_MAGIC, 0x10, __u32)
-#define SIMTEMP_IOC_SET_MODE       _IOW(SIMTEMP_IOC_MAGIC, 0x11, __u32)
-#define SIMTEMP_IOC_GET_PERIOD     _IOR(SIMTEMP_IOC_MAGIC, 0x20, __u32)
-#define SIMTEMP_IOC_SET_PERIOD     _IOW(SIMTEMP_IOC_MAGIC, 0x21, __u32)
 
 static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
 
@@ -65,6 +56,90 @@ static char *simtemp_devnode(const struct device *dev, umode_t *mode)
 
 struct simtemp_dev simtemp_DeviceContext; /*Device  Context*/
 
+/* --- Sysfs implementation --- */
+
+/*
+ * show/store para 'sampling_ms'
+ * Permite leer/escribir el período de muestreo en milisegundos.
+ * La escritura solo se permite si el temporizador está detenido.
+ */
+static ssize_t sampling_ms_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct simtemp_dev *sd = dev_get_drvdata(dev);
+	return sysfs_emit(buf, "%u\n", sd->u32Period_ms);
+}
+
+static ssize_t sampling_ms_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct simtemp_dev *sd = dev_get_drvdata(dev);
+	u32 new_period;
+	int ret;
+
+	ret = kstrtou32(buf, 10, &new_period);
+	if (ret)
+		return ret;
+
+	if (new_period == 0)
+		return -EINVAL;
+
+	/* UC-03: Rechazar cambio de período si está en ejecución */
+	if (hrtimer_active(&sd->timer))
+		return -EBUSY;
+
+	sd->u32Period_ms = new_period;
+	return count;
+}
+static DEVICE_ATTR_RW(sampling_ms);
+
+/*
+ * show/store para 'operation_mode'
+ * Permite leer/escribir el modo de operación: "continuous" o "one-shot".
+ * La escritura solo se permite si el temporizador está detenido.
+ */
+static ssize_t operation_mode_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct simtemp_dev *sd = dev_get_drvdata(dev);
+	return sysfs_emit(buf, "%s\n", sd->mode == SIMTEMP_MODE_CONTINUOUS ? "continuous" : "one-shot");
+}
+
+static ssize_t operation_mode_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct simtemp_dev *sd = dev_get_drvdata(dev);
+
+	/* Rechazar cambio de modo si está en ejecución */
+	if (hrtimer_active(&sd->timer))
+		return -EBUSY;
+
+	if (sysfs_streq(buf, "continuous"))
+		sd->mode = SIMTEMP_MODE_CONTINUOUS;
+	else if (sysfs_streq(buf, "one-shot"))
+		sd->mode = SIMTEMP_MODE_ONESHOT;
+	else
+		return -EINVAL;
+
+	return count;
+}
+static DEVICE_ATTR_RW(operation_mode);
+
+/*
+ * show para 'is_running' (solo lectura)
+ * Informa si el temporizador está actualmente activo.
+ */
+static ssize_t is_running_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct simtemp_dev *sd = dev_get_drvdata(dev);
+	return sysfs_emit(buf, "%d\n", hrtimer_active(&sd->timer));
+}
+static DEVICE_ATTR_RO(is_running);
+
+/* Grupo de atributos para ser creados/eliminados juntos */
+static struct attribute *simtemp_attrs[] = {
+	&dev_attr_sampling_ms.attr,
+	&dev_attr_operation_mode.attr,
+	&dev_attr_is_running.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(simtemp);
 
 
 /************* Functions **************** */
@@ -72,25 +147,32 @@ struct simtemp_dev simtemp_DeviceContext; /*Device  Context*/
 static enum hrtimer_restart simtemp_timer_cb(struct hrtimer *timer)
 {
     struct simtemp_dev *dev = container_of(timer, struct simtemp_dev, timer);
-    ktime_t now = ktime_get();
-    struct stsimptemp_sample_v1 sample;
+    struct simtemp_sample_v1 sample;
     unsigned long flags;
-    u64 seq;
 
     /* simple deterministic temperature model: base 25000 mC + (seq % 100) */
     spin_lock_irqsave(&dev->sample_lock, flags);
-    seq = dev->u64SequenceNumber++;
-    sample.u64TimeStamp_ns = ktime_to_ns(now);
-    sample.u64SequenceNumber = seq;
-    sample.u32temperature_mC = 25000 + (seq % 100);
-    sample.u32StatusFlags = 0;
+    sample.ts_ns = ktime_get_ns();
+    sample.temperature_mC = 25000 + (dev->u64SequenceNumber % 100);
+    sample.period_us = dev->u32Period_ms * 1000;
+    sample.flags = SIMTEMP_FLAG_OK;
+    dev->u64SequenceNumber++;
     dev->stsample = sample;
+
+    /* Si es one-shot, marca la muestra y no reprogrames el timer */
+    if (dev->mode == SIMTEMP_MODE_ONESHOT) {
+        dev->stsample.flags |= SIMTEMP_FLAG_ONESHOT_DONE;
+        spin_unlock_irqrestore(&dev->sample_lock, flags);
+        wake_up_interruptible(&dev->read_wait);
+        return HRTIMER_NORESTART;
+    }
+
     spin_unlock_irqrestore(&dev->sample_lock, flags);
 
     /* wake readers */
     wake_up_interruptible(&dev->read_wait);
 
-    /* re-arm timer */
+    /* re-arm timer for continuous mode */
     hrtimer_forward_now(timer, ktime_set(0, (s64)dev->u32Period_ms * 1000000LL));
     return HRTIMER_RESTART;
 }
@@ -131,7 +213,10 @@ static int __init simtemp_module_init(void)
     simtemp_class->devnode = simtemp_devnode;
 #endif
 
-    if (IS_ERR(device_create(simtemp_class, NULL, simtemp_dev_number, NULL, "simtemp"))) {
+    /* Guardamos el puntero al dispositivo para usarlo en sysfs */
+    simtemp_DeviceContext.dev = device_create_with_groups(simtemp_class, NULL, simtemp_dev_number,
+							  &simtemp_DeviceContext, simtemp_groups, "simtemp");
+    if (IS_ERR(simtemp_DeviceContext.dev)) {
         ret = -EINVAL;
         goto err_class_destroy;
     }
@@ -143,15 +228,10 @@ static int __init simtemp_module_init(void)
     hrtimer_init(&simtemp_DeviceContext.timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
     simtemp_DeviceContext.timer.function = simtemp_timer_cb;
 
-    /* start timer if in continuous mode */
-    if (simtemp_DeviceContext.mode == SIMTEMP_MODE_CONTINUOUS) {
-        ktime_t kt = ktime_set(0, (s64)simtemp_DeviceContext.u32Period_ms * 1000000LL);
-        hrtimer_start(&simtemp_DeviceContext.timer, kt, HRTIMER_MODE_REL);
-    }
-
     return 0;
 
 err_class_destroy:
+    /* device_destroy se llama en el exit, no es necesario aquí si falla create */
     class_destroy(simtemp_class);
 err_cdev_del:
     cdev_del(&simtemp_cdev);
@@ -164,7 +244,7 @@ static void __exit simtemp_module_exit(void)
 {
     /* stop timer */
     hrtimer_cancel(&simtemp_DeviceContext.timer);
-    device_destroy(simtemp_class, simtemp_dev_number);
+    device_destroy(simtemp_class, simtemp_DeviceContext.dev->devt);
     class_destroy(simtemp_class);
     cdev_del(&simtemp_cdev);
     unregister_chrdev_region(simtemp_dev_number, 1);
@@ -184,7 +264,7 @@ static int simtemp_release(struct inode *inode, struct file *file)
 static ssize_t simtemp_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
     struct simtemp_dev *device = file->private_data;
-    struct stsimptemp_sample_v1 sample;
+    struct simtemp_sample_v1 sample;
     unsigned long flags;
 
     /* Exit if not exist data into the buffer*/
@@ -194,7 +274,7 @@ static ssize_t simtemp_read(struct file *file, char __user *buf, size_t count, l
     }
     
     /*Buffer size validation*/
-    if(count < sizeof(struct stsimptemp_sample_v1))
+    if(count < sizeof(sample))
     {
         return -EINVAL;
     }
@@ -209,7 +289,7 @@ static ssize_t simtemp_read(struct file *file, char __user *buf, size_t count, l
     }
 
     *ppos = sizeof(sample);
-    return sizeof(sample);
+    return sizeof(struct simtemp_sample_v1);
 }
 
 static unsigned int simtemp_poll(struct file *file, poll_table *wait)
@@ -257,19 +337,11 @@ static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg
         if (tmp == 0)
             return -EINVAL;
 
-        /*
-         * Para aplicar el cambio de período de forma segura y atómica:
-         * 1. Intentamos cancelar el temporizador. hrtimer_try_to_cancel devuelve
-         *    1 si el temporizador estaba activo, 0 si no.
-         * 2. Actualizamos el valor del período.
-         * 3. Si el temporizador estaba activo, lo reiniciamos inmediatamente
-         *    con el nuevo período.
-         */
+        /* UC-03: Rechazar cambio de período si está en ejecución */
+        if (hrtimer_active(&dev->timer))
+            return -EBUSY;
+
         dev->u32Period_ms = tmp;
-        if (hrtimer_try_to_cancel(&dev->timer) == 1) {
-            kt = ktime_set(0, (s64)dev->u32Period_ms * 1000000LL);
-            hrtimer_start(&dev->timer, kt, HRTIMER_MODE_REL);
-        }
         return 0;
     default:
         return -ENOTTY;
