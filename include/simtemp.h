@@ -32,6 +32,14 @@ struct simtemp_dev{
     struct device *dev;
     struct miscdevice miscdev;
     wait_queue_head_t read_wait; /* Wait queue for polling */
+    /* high resolution timer for periodic sampling */
+    struct hrtimer timer;
+    /* period in milliseconds */
+    u32 u32Period_ms;
+    /* sequence counter for samples */
+    u64 u64SequenceNumber;
+    /* lock protecting stsample and sequence */
+    spinlock_t sample_lock;
     /*user section */
     enum ensimtemp_mode mode;
     /*data section*/
