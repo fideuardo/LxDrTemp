@@ -35,6 +35,7 @@ struct simtemp_dev{
     /*user section */
     enum ensimtemp_mode mode;
     /*data section*/
+    struct stsimptemp_sample_v1 stsample; /* Current sample */
     struct simtemp_ringbuffer stRingBuff; /* Ring buffer instance */
 };
 

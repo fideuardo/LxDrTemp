@@ -27,7 +27,7 @@ static const struct file_operations simtemp_fops =
     .release = simtemp_release,
     .read    = simtemp_read,
     .poll    = simtemp_poll,
-    .llseek  = no_llseek,
+    .llseek  = noop_llseek,
 };
 
 struct simtemp_dev simtemp_DeviceContext; /*Device  Context*/
