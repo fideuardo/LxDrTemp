@@ -1,12 +1,15 @@
 #ifndef _SIMTEMP_H_
 #define _SIMTEMP_H_
-
+/*types*/
 #include <linux/types.h>
 
+/*Kernel libraries*/
 #include <linux/spinlock.h>
 #include <linux/device.h>
 #include <linux/miscdevice.h>
 
+/*Own libraries*/
+#include <simtemp_ringbuf.h>
 #include <uapi/simtemp_uapi.h>
 
 /*Operation Modes */
@@ -20,17 +23,6 @@ enum ensimtemp_state {
 	SIMTEMP_enSTATE_STOP = 0,
 	SIMTEMP_enSTATE_RUN,
 	SIMTEMP_STATE_ERROR, /*Pending to add more states*/
-};
-/* Ring buffer */
-
-struct simtemp_ringbuffer{
-    struct simtemp_sample_v1 *stBuffer; /*Buffer pointer*/
-    spinlock_t lock;    /*Lock*/
-    u32 u32BufferSize;  /*Buffer size*/
-    u32 u32head;        /*Head pointer*/
-    u32 u32tail;        /*Tail pointer*/
-    u32 u32OverRuns;    /*Overruns*/
-    bool boDropOldest;  /*True: overwrite; false: discard */
 };
 
 /*Device Context */
@@ -58,12 +50,6 @@ struct simtemp_dev{
     
 };
 
-int  simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff, u32 u32BufferSize, bool boDropOldest);
-void simtemp_ringbuffer_free(struct simtemp_ringbuffer *srRingBuff);
-bool simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample);
-u32  simtemp_ringbuffer_read(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample, u32 u32Count);
-bool simtemp_ringbuffer_empty(struct simtemp_ringbuffer *srRingBuff);
-u32  simtemp_ringbuffer_level(struct simtemp_ringbuffer *srRingBuff);
 
 
 #endif /* _SIMTEMP_H_ */

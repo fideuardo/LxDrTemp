@@ -20,10 +20,10 @@ int  simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff, u32 u32Buff
     {
         return -EINVAL;
     }
-    /*Assigning memory address */
-    srRingBuff->stBuffer = kmalloc((sizeof(struct stsimptemp_sample_v1) * u32BufferSize), GFP_KERNEL | __GFP_ZERO);
+    /* Assigning memory address. FIX: Typo en el nombre de la estructura */
+    srRingBuff->stBuffer = kmalloc_array(u32BufferSize, sizeof(struct simtemp_sample_v1), GFP_KERNEL | __GFP_ZERO);
     
-    /*Validate if memory block was assigned*/
+    /* Validate if memory block was assigned */
     if(NULL == srRingBuff->stBuffer)
     {
         return -ENOMEM;
@@ -56,7 +56,8 @@ static u32 simtemp__u32levellock(struct simtemp_ringbuffer *srRingBuff)
     return u32value;
 }
 
-bool simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct stsimptemp_sample_v1 *pstSample)
+/* FIX: Typo en el nombre de la estructura */
+bool simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample)
 {
     unsigned long ulflags;
     u32 u32bufferused;
@@ -64,6 +65,9 @@ bool simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct stsi
     bool status = true;
 
     /*lock spin: start security zone*/
+    /* NOTE: El MSD especifica un diseño SPSC lockless. Esta implementación usa spinlocks.
+     * Para un diseño lockless, se usarían barreras de memoria como smp_store_release() aquí.
+     */
     spin_lock_irqsave(&srRingBuff->lock, ulflags);
     u32bufferused = srRingBuff->u32head - srRingBuff->u32tail;
 
@@ -77,12 +81,14 @@ bool simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct stsi
     else
     {
          /*Oldest element can be deletedd*/
-        if(true == srRingBuff->boDropOldest)
+        if(srRingBuff->boDropOldest)
         {
+            /* CORRECCIÓN: Sobrescribir la muestra más antigua avanzando el tail */
             u32next = srRingBuff->u32head % srRingBuff->u32BufferSize;
             srRingBuff->stBuffer[u32next] = *pstSample;
             srRingBuff->u32head++;
-            srRingBuff->u32tail++;
+            srRingBuff->u32tail++; /* <-- Esto es crucial, se avanza el puntero de lectura */
+            srRingBuff->u32OverRuns++; /* Contabilizar también la sobrescritura como un tipo de overrun */
         }
         else
         {
@@ -94,7 +100,8 @@ bool simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct stsi
     return status;
 }
 
-u32 simtemp_ringbuffer_read(struct simtemp_ringbuffer *srRingBuff, struct stsimptemp_sample_v1 *pstSample, u32 u32Count)
+/* FIX: Typo en el nombre de la estructura */
+u32 simtemp_ringbuffer_read(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample, u32 u32Count)
 {
     unsigned long ulflags;
     u32 u32bufferused;
@@ -102,14 +109,19 @@ u32 simtemp_ringbuffer_read(struct simtemp_ringbuffer *srRingBuff, struct stsimp
     u32 u32readcount = 0;
 
     spin_lock_irqsave(&srRingBuff->lock, ulflags);
+    /* NOTE: Para un diseño lockless, se usaría smp_load_acquire() para leer el 'head'. */
 
     u32bufferused = srRingBuff->u32head - srRingBuff->u32tail;
 
+    /* CORRECCIÓN: Limitar la lectura a la cantidad de datos disponibles o al espacio del usuario,
+     * lo que sea menor.
+     */
     if (u32Count > u32bufferused)
     {
         u32Count = u32bufferused;
     }
 
+    /* Copiar los datos al buffer del usuario */
     for (u32readcount = 0; u32readcount < u32Count; u32readcount++)
     {
         u32next = srRingBuff->u32tail % srRingBuff->u32BufferSize;
