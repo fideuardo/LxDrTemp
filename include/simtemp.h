@@ -14,6 +14,13 @@ enum ensimtemp_mode {
 	SIMTEMP_MODE_ONESHOT = 0,
     SIMTEMP_MODE_CONTINUOUS,
 };
+
+/* Driver States */
+enum ensimtemp_state {
+	SIMTEMP_STATE_STOPPED = 0,
+	SIMTEMP_STATE_RUNNING,
+	SIMTEMP_STATE_ERROR,
+};
 /* Ring buffer */
 
 struct simtemp_ringbuffer{
@@ -31,6 +38,9 @@ struct simtemp_dev{
     /*kernel section */
     struct device *dev;
     struct miscdevice miscdev;
+    /*Control elements*/
+    enum ensimtemp_state state; /*Driver State: STOPPED, RUNNING, ERROR*/
+
     wait_queue_head_t read_wait; /* Wait queue for polling */
     /* high resolution timer for periodic sampling */
     struct hrtimer timer;
@@ -45,6 +55,7 @@ struct simtemp_dev{
     /*data section*/
     struct simtemp_sample_v1 stsample; /* Current sample */
     struct simtemp_ringbuffer stRingBuff; /* Ring buffer instance */
+    
 };
 
 int  simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff, u32 u32BufferSize, bool boDropOldest);

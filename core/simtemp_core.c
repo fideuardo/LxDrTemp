@@ -83,7 +83,7 @@ static ssize_t sampling_ms_store(struct device *dev, struct device_attribute *at
 		return -EINVAL;
 
 	/* UC-03: Rechazar cambio de período si está en ejecución */
-	if (hrtimer_active(&sd->timer))
+	if (sd->state == SIMTEMP_STATE_RUNNING)
 		return -EBUSY;
 
 	sd->u32Period_ms = new_period;
@@ -107,7 +107,7 @@ static ssize_t operation_mode_store(struct device *dev, struct device_attribute 
 	struct simtemp_dev *sd = dev_get_drvdata(dev);
 
 	/* Rechazar cambio de modo si está en ejecución */
-	if (hrtimer_active(&sd->timer))
+	if (sd->state == SIMTEMP_STATE_RUNNING)
 		return -EBUSY;
 
 	if (sysfs_streq(buf, "continuous"))
@@ -128,7 +128,7 @@ static DEVICE_ATTR_RW(operation_mode);
 static ssize_t is_running_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct simtemp_dev *sd = dev_get_drvdata(dev);
-	return sysfs_emit(buf, "%d\n", hrtimer_active(&sd->timer));
+	return sysfs_emit(buf, "%d\n", (sd->state == SIMTEMP_STATE_RUNNING));
 }
 static DEVICE_ATTR_RO(is_running);
 
@@ -162,6 +162,7 @@ static enum hrtimer_restart simtemp_timer_cb(struct hrtimer *timer)
     /* Si es one-shot, marca la muestra y no reprogrames el timer */
     if (dev->mode == SIMTEMP_MODE_ONESHOT) {
         dev->stsample.flags |= SIMTEMP_FLAG_ONESHOT_DONE;
+        dev->state = SIMTEMP_STATE_STOPPED; /* Transición de estado */
         spin_unlock_irqrestore(&dev->sample_lock, flags);
         wake_up_interruptible(&dev->read_wait);
         return HRTIMER_NORESTART;
@@ -184,6 +185,7 @@ static int __init simtemp_module_init(void)
     memset(&simtemp_DeviceContext, 0, sizeof(simtemp_DeviceContext));
     
     /* Setting initial state*/
+    simtemp_DeviceContext.state = SIMTEMP_STATE_STOPPED; /* Estado inicial: Detenido */
     simtemp_DeviceContext.mode = SIMTEMP_MODE_CONTINUOUS; /*Default Mode: CONTINUOUS*/
     simtemp_DeviceContext.u32Period_ms = 1000; /* default 1000 ms */
     simtemp_DeviceContext.u64SequenceNumber = 0;
@@ -192,7 +194,7 @@ static int __init simtemp_module_init(void)
     /* allocate a device number */
     ret = alloc_chrdev_region(&simtemp_dev_number, 0, 1, "simtemp");
     if (ret)
-        return ret;
+    return ret;
 
     /* init cdev */
     cdev_init(&simtemp_cdev, &simtemp_fops);
@@ -208,10 +210,8 @@ static int __init simtemp_module_init(void)
         goto err_cdev_del;
     }
 
-    /* set device node permissions */
-#ifdef CONFIG_SYSFS
+    /* set device node permissions user mode is ever enable*/
     simtemp_class->devnode = simtemp_devnode;
-#endif
 
     /* Guardamos el puntero al dispositivo para usarlo en sysfs */
     simtemp_DeviceContext.dev = device_create_with_groups(simtemp_class, NULL, simtemp_dev_number,
@@ -306,12 +306,18 @@ static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 
     switch (cmd) {
     case SIMTEMP_IOC_START:
+        if (dev->state == SIMTEMP_STATE_RUNNING)
+            return -EBUSY; /* Ya está corriendo */
         /* start timer */
         kt = ktime_set(0, (s64)dev->u32Period_ms * 1000000LL);
         hrtimer_start(&dev->timer, kt, HRTIMER_MODE_REL);
+        dev->state = SIMTEMP_STATE_RUNNING;
         return 0;
     case SIMTEMP_IOC_STOP:
+        if (dev->state == SIMTEMP_STATE_STOPPED)
+            return 0; /* Ya está detenido, no es un error */
         hrtimer_cancel(&dev->timer);
+        dev->state = SIMTEMP_STATE_STOPPED;
         return 0;
     case SIMTEMP_IOC_GET_MODE:
         tmp = (u32)dev->mode;
@@ -323,6 +329,9 @@ static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg
             return -EFAULT;
         if (tmp > SIMTEMP_MODE_CONTINUOUS)
             return -EINVAL;
+        /* Solo se puede cambiar el modo si está detenido */
+        if (dev->state == SIMTEMP_STATE_RUNNING)
+            return -EBUSY;
         dev->mode = (enum ensimtemp_mode)tmp;
         return 0;
     case SIMTEMP_IOC_GET_PERIOD:
@@ -338,7 +347,7 @@ static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg
             return -EINVAL;
 
         /* UC-03: Rechazar cambio de período si está en ejecución */
-        if (hrtimer_active(&dev->timer))
+        if (dev->state == SIMTEMP_STATE_RUNNING)
             return -EBUSY;
 
         dev->u32Period_ms = tmp;
