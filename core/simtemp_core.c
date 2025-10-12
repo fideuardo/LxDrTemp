@@ -1,5 +1,6 @@
 
 /*kernel includes*/
+#include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
@@ -41,18 +42,12 @@ static const struct file_operations simtemp_fops =
     .unlocked_ioctl = simtemp_ioctl,
 };
 
-/* Character device state */
-static dev_t simtemp_dev_number;
-static struct class *simtemp_class;
-static struct cdev simtemp_cdev;
-
-/* devnode callback to set device node mode to 0666 */
-static char *simtemp_devnode(const struct device *dev, umode_t *mode)
-{
-    if (mode)
-        *mode = 0666;
-    return NULL;
-}
+static struct miscdevice simtemp_miscdev = {
+    .minor = MISC_DYNAMIC_MINOR,
+    .name = "simtemp",
+    .fops = &simtemp_fops,
+    .mode = 0666,
+};
 
 struct simtemp_dev simtemp_DeviceContext; /*Device  Context*/
 
@@ -67,24 +62,29 @@ static ssize_t state_show(struct device *stdevice, struct device_attribute *attr
     struct simtemp_dev *driver_data = dev_get_drvdata(stdevice);
     return sysfs_emit(buffer, "%d\n", driver_data->state);
 }
+
+
 static ssize_t state_store(struct device *stdevice, struct device_attribute *attr, const char *buffer, size_t count)
 {
-    struct simtemp_dev *driver_data = dev_get_drvdata(stdevice);
-    /* User stop service*/
-    if(sysfs_streq(buffer, "STOP"))
-    {
-        driver_data->state = SIMTEMP_enSTATE_STOP;
+    struct simtemp_dev *dev = dev_get_drvdata(stdevice);
+    ktime_t kt;
+
+    if (sysfs_streq(buffer, "STOP")) {
+        if (dev->state != SIMTEMP_enSTATE_STOP) {
+            hrtimer_cancel(&dev->timer);
+            dev->state = SIMTEMP_enSTATE_STOP;
+        }
         return count;
-    }
-    /*User Run Service */
-    else if(sysfs_streq(buffer, "RUN"))
-    {
-        driver_data->state = SIMTEMP_enSTATE_RUN;
+
+    } else if (sysfs_streq(buffer, "RUN")) {
+        if (dev->state != SIMTEMP_enSTATE_RUN) {
+            kt = ktime_set(0, (s64)dev->u32Period_ms * 1000000LL);
+            hrtimer_start(&dev->timer, kt, HRTIMER_MODE_REL);
+            dev->state = SIMTEMP_enSTATE_RUN;
+        }
         return count;
-    }
-    /*Rest of options are restricted*/
-    else
-    {
+
+    } else {
         return -EINVAL;
     }
 }
@@ -213,36 +213,6 @@ static int __init simtemp_module_init(void)
     simtemp_DeviceContext.u64SequenceNumber = 0;
     spin_lock_init(&simtemp_DeviceContext.sample_lock);
 
-    /* allocate a device number */
-    ret = alloc_chrdev_region(&simtemp_dev_number, 0, 1, "simtemp");
-    if (ret)
-    return ret;
-
-    /* init cdev */
-    cdev_init(&simtemp_cdev, &simtemp_fops);
-    simtemp_cdev.owner = THIS_MODULE;
-    ret = cdev_add(&simtemp_cdev, simtemp_dev_number, 1);
-    if (ret)
-        goto err_unregister_chrdev;
-
-    /* create class/device to get /dev node */
-    simtemp_class = class_create("simtemp");
-    if (IS_ERR(simtemp_class)) {
-        ret = PTR_ERR(simtemp_class);
-        goto err_cdev_del;
-    }
-
-    /* set device node permissions user mode is ever enable*/
-    simtemp_class->devnode = simtemp_devnode;
-
-    /* Guardamos el puntero al dispositivo para usarlo en sysfs */
-    simtemp_DeviceContext.dev = device_create_with_groups(simtemp_class, NULL, simtemp_dev_number,
-							  &simtemp_DeviceContext, simtemp_groups, "simtemp");
-    if (IS_ERR(simtemp_DeviceContext.dev)) {
-        ret = -EINVAL;
-        goto err_class_destroy;
-    }
-
     /* init wait queue (ringbuffer integration on standby) */
     init_waitqueue_head(&simtemp_DeviceContext.read_wait);
 
@@ -250,26 +220,37 @@ static int __init simtemp_module_init(void)
     hrtimer_init(&simtemp_DeviceContext.timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
     simtemp_DeviceContext.timer.function = simtemp_timer_cb;
 
-    return 0;
+    /* Register misdevice */
+    ret = misc_register(&simtemp_miscdev);
+    if (ret)
+    {
+        return ret;
+    }
+    
+    /*link device with DeviceContext*/
+    dev_set_drvdata(simtemp_miscdev.this_device, &simtemp_DeviceContext);
+    simtemp_DeviceContext.dev = simtemp_miscdev.this_device;
 
-err_class_destroy:
-    /* device_destroy se llama en el exit, no es necesario aquí si falla create */
-    class_destroy(simtemp_class);
-err_cdev_del:
-    cdev_del(&simtemp_cdev);
-err_unregister_chrdev:
-    unregister_chrdev_region(simtemp_dev_number, 1);
-    return ret;
+    /*create configuration files*/
+    ret = sysfs_create_groups(&simtemp_miscdev.this_device->kobj, simtemp_groups);
+    if (ret) {
+        misc_deregister(&simtemp_miscdev);
+        return ret;
+    }
+
+    pr_info("simtemp: loaded (miscdevice: /dev/simtemp)\n");
+    return 0;
 }
+    
 
 static void __exit simtemp_module_exit(void)
 {
     /* stop timer */
     hrtimer_cancel(&simtemp_DeviceContext.timer);
-    device_destroy(simtemp_class, simtemp_DeviceContext.dev->devt);
-    class_destroy(simtemp_class);
-    cdev_del(&simtemp_cdev);
-    unregister_chrdev_region(simtemp_dev_number, 1);
+     /* elimina sysfs y desregistra misc */
+    sysfs_remove_groups(&simtemp_miscdev.this_device->kobj, simtemp_groups);
+    misc_deregister(&simtemp_miscdev);
+    pr_info("simtemp: unloaded\n");
 }
 
 static int simtemp_open(struct inode *inode, struct file *file)
