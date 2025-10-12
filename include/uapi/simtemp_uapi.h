@@ -9,8 +9,8 @@
  * Esta es la estructura que el usuario recibe al leer /dev/simtemp
  */
 struct simtemp_sample_v1 {
-	__u64 TimeStamp_ns;           /* CLOCK_MONOTONIC_RAW at enqueue */
-	__u64 Temperature_mC;  /* e.g., -40000..150000 mC */
+	__u64 TimeStamp_ns;           /* Time Stamp */
+	__u64 Temperature_mC;         /* p.ej. 25000 = 25.0°C */
 	__u64 StatusFlags;           /* bit0=OK, bit1=OVERFLOW, bit2=THR_EDGE, bit3=ONESHOT_DONE */
 } __attribute__((packed));
 
