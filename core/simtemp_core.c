@@ -154,23 +154,12 @@ static ssize_t operation_mode_store(struct device *dev, struct device_attribute 
 }
 static DEVICE_ATTR_RW(operation_mode);
 
-/*
- * show para 'is_running' (solo lectura)
- * Informa si el temporizador está actualmente activo.
- */
-static ssize_t is_running_show(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	struct simtemp_dev *sd = dev_get_drvdata(dev);
-	return sysfs_emit(buf, "%d\n", (sd->state == SIMTEMP_enSTATE_RUN));
-}
-static DEVICE_ATTR_RO(is_running);
 
 /* Grupo de atributos para ser creados/eliminados juntos */
 static struct attribute *simtemp_attrs[] = {
     &dev_attr_state.attr,
 	&dev_attr_sampling_ms.attr,
 	&dev_attr_operation_mode.attr,
-	&dev_attr_is_running.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(simtemp);
