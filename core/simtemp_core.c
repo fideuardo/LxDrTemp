@@ -175,16 +175,15 @@ static enum hrtimer_restart simtemp_timer_cb(struct hrtimer *timer)
 
     /* simple deterministic temperature model: base 25000 mC + (seq % 100) */
     spin_lock_irqsave(&dev->sample_lock, flags);
-    sample.ts_ns = ktime_get_ns();
-    sample.temperature_mC = 25000 + (dev->u64SequenceNumber % 100);
-    sample.period_us = dev->u32Period_ms * 1000;
-    sample.flags = SIMTEMP_FLAG_OK;
+    sample.TimeStamp_ns = ktime_get_ns();
+    sample.Temperature_mC = 25000 + (dev->u64SequenceNumber % 100);
+    sample.StatusFlags = SIMTEMP_FLAG_OK;
     dev->u64SequenceNumber++;
     dev->stsample = sample;
 
     /* Si es one-shot, marca la muestra y no reprogrames el timer */
     if (dev->mode == SIMTEMP_MODE_ONESHOT) {
-        dev->stsample.flags |= SIMTEMP_FLAG_ONESHOT_DONE;
+        dev->stsample.StatusFlags |= SIMTEMP_FLAG_ONESHOT_DONE;
         dev->state = SIMTEMP_enSTATE_STOP; /* Transición de estado */
         spin_unlock_irqrestore(&dev->sample_lock, flags);
         wake_up_interruptible(&dev->read_wait);
