@@ -51,6 +51,33 @@ static struct miscdevice simtemp_miscdev = {
 
 struct simtemp_dev simtemp_DeviceContext; /*Device  Context*/
 
+/* --- Funciones auxiliares para control de estado --- */
+
+static int simtemp_start_sampler(struct simtemp_dev *dev)
+{
+	ktime_t kt;
+
+	if (dev->state == SIMTEMP_enSTATE_RUN)
+		return -EBUSY; /* Ya está corriendo */
+
+	/* Inicia el timer */
+	kt = ktime_set(0, (s64)dev->u32Period_ms * 1000000LL);
+	hrtimer_start(&dev->timer, kt, HRTIMER_MODE_REL);
+	dev->state = SIMTEMP_enSTATE_RUN;
+
+	return 0;
+}
+
+static int simtemp_stop_sampler(struct simtemp_dev *dev)
+{
+	if (dev->state == SIMTEMP_enSTATE_STOP)
+		return 0; /* Ya está detenido, no es un error */
+
+	hrtimer_cancel(&dev->timer);
+	dev->state = SIMTEMP_enSTATE_STOP;
+	return 0;
+}
+
 /* --- Sysfs implementation --- */
 
 /*
@@ -67,26 +94,16 @@ static ssize_t state_show(struct device *stdevice, struct device_attribute *attr
 static ssize_t state_store(struct device *stdevice, struct device_attribute *attr, const char *buffer, size_t count)
 {
     struct simtemp_dev *dev = dev_get_drvdata(stdevice);
-    ktime_t kt;
+    int ret;
 
     if (sysfs_streq(buffer, "STOP")) {
-        if (dev->state != SIMTEMP_enSTATE_STOP) {
-            hrtimer_cancel(&dev->timer);
-            dev->state = SIMTEMP_enSTATE_STOP;
-        }
-        return count;
-
+        ret = simtemp_stop_sampler(dev);
     } else if (sysfs_streq(buffer, "RUN")) {
-        if (dev->state != SIMTEMP_enSTATE_RUN) {
-            kt = ktime_set(0, (s64)dev->u32Period_ms * 1000000LL);
-            hrtimer_start(&dev->timer, kt, HRTIMER_MODE_REL);
-            dev->state = SIMTEMP_enSTATE_RUN;
-        }
-        return count;
-
+        ret = simtemp_start_sampler(dev);
     } else {
-        return -EINVAL;
+        ret = -EINVAL;
     }
+    return ret ? ret : count;
 }
 static DEVICE_ATTR_RW(state);
 
@@ -304,24 +321,15 @@ static unsigned int simtemp_poll(struct file *file, poll_table *wait)
 static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     struct simtemp_dev *dev = file->private_data;
-    u32 tmp;
-    ktime_t kt;
+    u32 tmp;    
 
     switch (cmd) {
     case SIMTEMP_IOC_START:
-        if (dev->state == SIMTEMP_enSTATE_RUN)
-            return -EBUSY; /* Ya está corriendo */
-        /* start timer */
-        kt = ktime_set(0, (s64)dev->u32Period_ms * 1000000LL);
-        hrtimer_start(&dev->timer, kt, HRTIMER_MODE_REL);
-        dev->state = SIMTEMP_enSTATE_RUN;
-        return 0;
+        return simtemp_start_sampler(dev);
+
     case SIMTEMP_IOC_STOP:
-        if (dev->state == SIMTEMP_enSTATE_STOP)
-            return 0; /* Ya está detenido, no es un error */
-        hrtimer_cancel(&dev->timer);
-        dev->state = SIMTEMP_enSTATE_STOP;
-        return 0;
+        return simtemp_stop_sampler(dev);
+
     case SIMTEMP_IOC_GET_MODE:
         tmp = (u32)dev->mode;
         if (copy_to_user((void __user *)arg, &tmp, sizeof(tmp)))
