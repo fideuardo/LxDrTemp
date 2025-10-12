@@ -17,9 +17,9 @@ enum ensimtemp_mode {
 
 /* Driver States */
 enum ensimtemp_state {
-	SIMTEMP_STATE_STOPPED = 0,
-	SIMTEMP_STATE_RUNNING,
-	SIMTEMP_STATE_ERROR,
+	SIMTEMP_enSTATE_STOP = 0,
+	SIMTEMP_enSTATE_RUN,
+	SIMTEMP_STATE_ERROR, /*Pending to add more states*/
 };
 /* Ring buffer */
 
