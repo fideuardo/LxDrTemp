@@ -1,0 +1,16 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "all";
+
+    fragment@0 {
+        target-path = "/";
+        __overlay__ {
+            simtemp_device: simtemp@0 {
+                compatible = "nxp,simtemp";
+                status = "okay";
+            };
+        };
+    };
+};
