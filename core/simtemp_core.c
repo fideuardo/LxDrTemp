@@ -11,6 +11,7 @@
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/hrtimer.h>
+#include <linux/platform_device.h>
 
 
 /*OWn includes */
@@ -18,10 +19,15 @@
 #include <uapi/simtemp_uapi.h>
 
 /*Header Functions*/
+/* Funciones de plataforma */
+static int simtemp_probe(struct platform_device *pdev);
+static int simtemp_remove(struct platform_device *pdev);
+
+/* Funciones de fops */
 static int simtemp_open(struct inode *inode, struct file *file);
 static int simtemp_release(struct inode *inode, struct file *file);
 static ssize_t simtemp_read(struct file *file, char __user *buf, size_t count, loff_t *ppos);
-static unsigned int simtemp_poll(struct file *file, poll_table *wait);
+static __poll_t simtemp_poll(struct file *file, poll_table *wait);
 
 
 /*Global Variables*/
@@ -48,8 +54,6 @@ static struct miscdevice simtemp_miscdev = {
     .fops = &simtemp_fops,
     .mode = 0666,
 };
-
-struct simtemp_dev simtemp_DeviceContext; /*Device  Context*/
 
 /* --- Funciones auxiliares para control de estado --- */
 
@@ -215,75 +219,14 @@ static enum hrtimer_restart simtemp_timer_cb(struct hrtimer *timer)
     return HRTIMER_RESTART;
 }
 
-static int __init simtemp_module_init(void)
-{
-    int ret;
-    
-    memset(&simtemp_DeviceContext, 0, sizeof(simtemp_DeviceContext));
-    
-    /* Setting initial state*/
-    simtemp_DeviceContext.state = SIMTEMP_enSTATE_STOP; /* Estado inicial: Detenido */
-    simtemp_DeviceContext.mode = SIMTEMP_MODE_CONTINUOUS; /*Default Mode: CONTINUOUS*/
-    simtemp_DeviceContext.u32Period_ms = 1000; /* default 1000 ms */
-    simtemp_DeviceContext.u64SequenceNumber = 0;
-    /* La variable data_ready ya no es necesaria si usamos el nivel del ring buffer */
-    /* spin_lock_init(&simtemp_DeviceContext.sample_lock); -> El lock se inicializa en el ring buffer */
-
-    /* Allocate and initialize the ring buffer */
-    ret = simtemp_ringbuffer_alloc(&simtemp_DeviceContext.stRingBuff, SIMTEMP_DEFAULT_RING_SIZE, true);
-    if (ret)
-        return ret;
-
-    /* init wait queue */
-    init_waitqueue_head(&simtemp_DeviceContext.read_wait);
-
-    /* init hrtimer */
-    hrtimer_init(&simtemp_DeviceContext.timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-    simtemp_DeviceContext.timer.function = simtemp_timer_cb;
-
-    /* Register misdevice */
-    ret = misc_register(&simtemp_miscdev);
-    if (ret)
-    {
-        return ret;
-    }
-    
-    /*link device with DeviceContext*/
-    dev_set_drvdata(simtemp_miscdev.this_device, &simtemp_DeviceContext);
-    simtemp_DeviceContext.dev = simtemp_miscdev.this_device;
-
-    /* Parse Device Tree properties to override defaults */
-    simtemp_of_parse(simtemp_miscdev.this_device, &simtemp_DeviceContext);
-
-    /*create configuration files*/
-    ret = sysfs_create_groups(&simtemp_miscdev.this_device->kobj, simtemp_groups);
-    if (ret) {
-        pr_err("simtemp: failed to create sysfs files\n");
-        /* Cleanup in reverse order of initialization */
-        hrtimer_cancel(&simtemp_DeviceContext.timer);
-        simtemp_ringbuffer_free(&simtemp_DeviceContext.stRingBuff);
-        misc_deregister(&simtemp_miscdev);
-    }
-
-    pr_info("simtemp: loaded (miscdevice: /dev/simtemp)\n");
-    return 0;
-}
-    
-
-static void __exit simtemp_module_exit(void)
-{
-    /* stop timer */
-    hrtimer_cancel(&simtemp_DeviceContext.timer);
-    simtemp_ringbuffer_free(&simtemp_DeviceContext.stRingBuff);
-     /* elimina sysfs y desregistra misc */
-    sysfs_remove_groups(&simtemp_miscdev.this_device->kobj, simtemp_groups);
-    misc_deregister(&simtemp_miscdev);
-    pr_info("simtemp: unloaded\n");
-}
+/*
+ * La función open ahora obtiene el contexto del driver a través del miscdevice,
+ * que a su vez lo obtuvo del platform_device en el probe.
+ */
 
 static int simtemp_open(struct inode *inode, struct file *file)
 {
-    file->private_data = &simtemp_DeviceContext;
+    file->private_data = container_of(inode->i_cdev, struct miscdevice, cdev)->private_data;
     return 0;
 }
 
@@ -328,10 +271,10 @@ static ssize_t simtemp_read(struct file *file, char __user *buf, size_t count, l
     return samples_read * sizeof(struct simtemp_sample_v1);
 }
 
-static unsigned int simtemp_poll(struct file *file, poll_table *wait)
+static __poll_t simtemp_poll(struct file *file, poll_table *wait)
 {
     struct simtemp_dev *dev = file->private_data;
-    unsigned int mask = 0;
+    __poll_t mask = 0;
 
     poll_wait(file, &dev->read_wait, wait);
 
@@ -391,6 +334,91 @@ static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg
     }
 }
 
+/* --- Platform Driver Implementation --- */
+
+static const struct of_device_id simtemp_of_match[] = {
+	{ .compatible = "simtemp,collector" },
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(of, simtemp_of_match);
+
+static int simtemp_probe(struct platform_device *pdev)
+{
+	struct simtemp_dev *sdev;
+	int ret;
+
+	/* 1. Asignar memoria para el contexto del dispositivo */
+	sdev = devm_kzalloc(&pdev->dev, sizeof(*sdev), GFP_KERNEL);
+	if (!sdev)
+		return -ENOMEM;
+
+	/* 2. Inicializar el contexto del dispositivo */
+	sdev->state = SIMTEMP_enSTATE_STOP;
+	sdev->mode = SIMTEMP_MODE_CONTINUOUS; /* Default, será sobreescrito por DT */
+	sdev->u32Period_ms = 1000;           /* Default, será sobreescrito por DT */
+	sdev->u64SequenceNumber = 0;
+	sdev->dev = &pdev->dev;
+
+	/* 3. Parsear el Device Tree */
+	simtemp_of_parse(&pdev->dev, sdev);
+
+	/* 4. Inicializar componentes del driver */
+	ret = simtemp_ringbuffer_alloc(&sdev->stRingBuff, SIMTEMP_DEFAULT_RING_SIZE, true);
+	if (ret)
+		return ret;
+
+	init_waitqueue_head(&sdev->read_wait);
+	hrtimer_init(&sdev->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	sdev->timer.function = simtemp_timer_cb;
+
+	/* 5. Registrar el miscdevice */
+	simtemp_miscdev.private_data = sdev;
+	ret = misc_register(&simtemp_miscdev);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to register misc device\n");
+		simtemp_ringbuffer_free(&sdev->stRingBuff);
+		return ret;
+	}
+
+	/* 6. Crear los archivos de sysfs */
+	ret = sysfs_create_groups(&simtemp_miscdev.this_device->kobj, simtemp_groups);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to create sysfs files\n");
+		misc_deregister(&simtemp_miscdev);
+		simtemp_ringbuffer_free(&sdev->stRingBuff);
+		return ret;
+	}
+
+	/* 7. Guardar el contexto en el platform_device para usarlo en remove */
+	platform_set_drvdata(pdev, sdev);
+
+	pr_info("simtemp: loaded (miscdevice: /dev/simtemp)\n");
+	return 0;
+}
+
+static int simtemp_remove(struct platform_device *pdev)
+{
+	struct simtemp_dev *sdev = platform_get_drvdata(pdev);
+
+	/* Limpieza en orden inverso al probe */
+	hrtimer_cancel(&sdev->timer);
+	sysfs_remove_groups(&simtemp_miscdev.this_device->kobj, simtemp_groups);
+	misc_deregister(&simtemp_miscdev);
+	simtemp_ringbuffer_free(&sdev->stRingBuff);
+
+	pr_info("simtemp: unloaded\n");
+	return 0;
+}
+
+static struct platform_driver simtemp_platform_driver = {
+	.driver = {
+		.name = "simtemp",
+		.of_match_table = simtemp_of_match,
+	},
+	.probe = simtemp_probe,
+	.remove = simtemp_remove,
+};
+module_platform_driver(simtemp_platform_driver);
 
 module_init(simtemp_module_init);
 module_exit(simtemp_module_exit);
