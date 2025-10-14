@@ -15,7 +15,7 @@
 
 /*OWn includes */
 #include "simtemp.h"
-#include "uapi/simtemp_uapi.h"
+#include <uapi/simtemp_uapi.h>
 
 /*Header Functions*/
 static int simtemp_open(struct inode *inode, struct file *file);
@@ -258,8 +258,11 @@ static int __init simtemp_module_init(void)
     /*create configuration files*/
     ret = sysfs_create_groups(&simtemp_miscdev.this_device->kobj, simtemp_groups);
     if (ret) {
+        pr_err("simtemp: failed to create sysfs files\n");
+        /* Cleanup in reverse order of initialization */
+        hrtimer_cancel(&simtemp_DeviceContext.timer);
+        simtemp_ringbuffer_free(&simtemp_DeviceContext.stRingBuff);
         misc_deregister(&simtemp_miscdev);
-        return ret;
     }
 
     pr_info("simtemp: loaded (miscdevice: /dev/simtemp)\n");
