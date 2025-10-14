@@ -50,6 +50,6 @@ struct simtemp_dev{
     
 };
 
-
+int simtemp_of_parse(struct device *dev, struct simtemp_dev *sdev);
 
 #endif /* _SIMTEMP_H_ */

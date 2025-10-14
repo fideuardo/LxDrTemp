@@ -2,14 +2,16 @@
 /plugin/;
 
 / {
-    compatible = "all";
-
     fragment@0 {
         target-path = "/";
         __overlay__ {
-            simtemp_device: simtemp@0 {
-                compatible = "nxp,simtemp";
+            simtemp_node: simtemp {
+                compatible = "simtemp,collector";
                 status = "okay";
+
+                /* Propiedades para sobreescribir los valores por defecto */
+                sample-period-us = <500000>; /* 500 ms */
+                operation-mode = "one-shot";
             };
         };
     };

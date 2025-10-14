@@ -244,6 +244,9 @@ static int __init simtemp_module_init(void)
         return ret;
     }
     
+    /* Parse Device Tree properties. This will override defaults if properties are found. */
+    simtemp_of_parse(simtemp_miscdev.this_device, &simtemp_DeviceContext);
+
     /*link device with DeviceContext*/
     dev_set_drvdata(simtemp_miscdev.this_device, &simtemp_DeviceContext);
     simtemp_DeviceContext.dev = simtemp_miscdev.this_device;
