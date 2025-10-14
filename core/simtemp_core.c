@@ -197,6 +197,7 @@ static enum hrtimer_restart simtemp_timer_cb(struct hrtimer *timer)
     /* simple deterministic temperature model: base 25000 mC + (seq % 100) */
     sample.TimeStamp_ns = ktime_get_ns();
     sample.Temperature_mC = 25000 + (dev->u64SequenceNumber % 100);
+    
     sample.StatusFlags = SIMTEMP_FLAG_OK;
     dev->u64SequenceNumber++;
 
