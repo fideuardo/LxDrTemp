@@ -411,9 +411,9 @@ static void simtemp_remove(struct platform_device *pdev)
 	struct simtemp_dev *sdev = platform_get_drvdata(pdev);
 
 	/* Cleanup in reverse order of probe */
-	hrtimer_cancel(&sdev->timer);
 	sysfs_remove_groups(&simtemp_miscdev.this_device->kobj, simtemp_groups);
 	misc_deregister(&simtemp_miscdev);
+	hrtimer_cancel(&sdev->timer);
 	simtemp_ringbuffer_free(&sdev->stRingBuff);
 
 	pr_info("simtemp: unloaded\n");
