@@ -12,6 +12,7 @@
 #include <linux/slab.h>
 #include <linux/hrtimer.h>
 #include <linux/platform_device.h>
+#include <linux/of.h> /* Necesario para of_device_id */
 
 
 /*OWn includes */
@@ -20,7 +21,7 @@
 
 /*Header Functions*/
 /* Funciones de plataforma */
-static int simtemp_probe(struct platform_device *pdev);
+static int simtemp_probe(struct platform_device *pdev); /* La firma es correcta */
 static int simtemp_remove(struct platform_device *pdev);
 
 /* Funciones de fops */
@@ -226,7 +227,7 @@ static enum hrtimer_restart simtemp_timer_cb(struct hrtimer *timer)
 
 static int simtemp_open(struct inode *inode, struct file *file)
 {
-    file->private_data = container_of(inode->i_cdev, struct miscdevice, cdev)->private_data;
+    file->private_data = simtemp_miscdev.private_data;
     return 0;
 }
 
@@ -419,9 +420,6 @@ static struct platform_driver simtemp_platform_driver = {
 	.remove = simtemp_remove,
 };
 module_platform_driver(simtemp_platform_driver);
-
-module_init(simtemp_module_init);
-module_exit(simtemp_module_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Fidel Eduardo Cabañas Castillo");
