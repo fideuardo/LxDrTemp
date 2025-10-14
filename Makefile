@@ -14,14 +14,33 @@
 KDIR ?= /lib/modules/$(shell uname -r)/build
 
 obj-m := simtemp.o
-simtemp-objs := core/simtemp_core.o
+simtemp-objs := core/simtemp_core.o core/simtemp_dt.o core/simtemp_ringbuf.o
 
 ccflags-y += -I$(src)/include
 
 all:
-	$(MAKE) -C $(KDIR) M=$(PWD) modules
+	dtc -@ -I dts -O dtb -o simtemp.dtbo simtemp-overlay.dts
+	$(MAKE) -C $(KDIR) M=$(CURDIR) modules
 
 clean:
-	$(MAKE) -C $(KDIR) M=$(PWD) clean
+	$(MAKE) -C $(KDIR) M=$(CURDIR) clean
+	rm -f *.dtbo
 
-.PHONY: all clean
+load: all
+	-sudo rmmod simtemp || true
+	sudo cp -f simtemp.dtbo /lib/firmware/
+	sudo dtoverlay -d . simtemp || echo "Overlay may already be applied."
+	sudo insmod simtemp.ko
+	dmesg | tail -n 5
+
+load_nodt: all
+	-sudo rmmod simtemp || true
+	sudo insmod simtemp.ko
+	dmesg | tail -n 5
+
+unload:
+	-sudo rmmod simtemp || true
+	-sudo dtoverlay -r simtemp || true
+	dmesg | tail -n 5
+
+.PHONY: all clean load unload load_nodt

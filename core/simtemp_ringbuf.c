@@ -88,7 +88,7 @@ bool simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct simt
             srRingBuff->stBuffer[u32next] = *pstSample;
             srRingBuff->u32head++;
             srRingBuff->u32tail++; /* <-- Esto es crucial, se avanza el puntero de lectura */
-            srRingBuff->u32OverRuns++; /* Contabilizar también la sobrescritura como un tipo de overrun */
+            srRingBuff->u32OverRuns++;
         }
         else
         {

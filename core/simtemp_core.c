@@ -188,26 +188,24 @@ static enum hrtimer_restart simtemp_timer_cb(struct hrtimer *timer)
 {
     struct simtemp_dev *dev = container_of(timer, struct simtemp_dev, timer);
     struct simtemp_sample_v1 sample;
-    unsigned long flags;
 
     /* simple deterministic temperature model: base 25000 mC + (seq % 100) */
-    spin_lock_irqsave(&dev->sample_lock, flags);
     sample.TimeStamp_ns = ktime_get_ns();
     sample.Temperature_mC = 25000 + (dev->u64SequenceNumber % 100);
     sample.StatusFlags = SIMTEMP_FLAG_OK;
     dev->u64SequenceNumber++;
-    dev->stsample = sample;
 
     /* Si es one-shot, marca la muestra y no reprogrames el timer */
     if (dev->mode == SIMTEMP_MODE_ONESHOT) {
         dev->stsample.StatusFlags |= SIMTEMP_FLAG_ONESHOT_DONE;
         dev->state = SIMTEMP_enSTATE_STOP; /* Transición de estado */
-        spin_unlock_irqrestore(&dev->sample_lock, flags);
+        simtemp_ringbuffer_write(&dev->stRingBuff, &sample);
         wake_up_interruptible(&dev->read_wait);
         return HRTIMER_NORESTART;
     }
 
-    spin_unlock_irqrestore(&dev->sample_lock, flags);
+    /* Escribir en el ring buffer. El lock está dentro de la función de escritura. */
+    simtemp_ringbuffer_write(&dev->stRingBuff, &sample);
 
     /* wake readers */
     wake_up_interruptible(&dev->read_wait);
@@ -228,9 +226,15 @@ static int __init simtemp_module_init(void)
     simtemp_DeviceContext.mode = SIMTEMP_MODE_CONTINUOUS; /*Default Mode: CONTINUOUS*/
     simtemp_DeviceContext.u32Period_ms = 1000; /* default 1000 ms */
     simtemp_DeviceContext.u64SequenceNumber = 0;
-    spin_lock_init(&simtemp_DeviceContext.sample_lock);
+    /* La variable data_ready ya no es necesaria si usamos el nivel del ring buffer */
+    /* spin_lock_init(&simtemp_DeviceContext.sample_lock); -> El lock se inicializa en el ring buffer */
 
-    /* init wait queue (ringbuffer integration on standby) */
+    /* Allocate and initialize the ring buffer */
+    ret = simtemp_ringbuffer_alloc(&simtemp_DeviceContext.stRingBuff, SIMTEMP_DEFAULT_RING_SIZE, true);
+    if (ret)
+        return ret;
+
+    /* init wait queue */
     init_waitqueue_head(&simtemp_DeviceContext.read_wait);
 
     /* init hrtimer */
@@ -248,6 +252,9 @@ static int __init simtemp_module_init(void)
     dev_set_drvdata(simtemp_miscdev.this_device, &simtemp_DeviceContext);
     simtemp_DeviceContext.dev = simtemp_miscdev.this_device;
 
+    /* Parse Device Tree properties to override defaults */
+    simtemp_of_parse(simtemp_miscdev.this_device, &simtemp_DeviceContext);
+
     /*create configuration files*/
     ret = sysfs_create_groups(&simtemp_miscdev.this_device->kobj, simtemp_groups);
     if (ret) {
@@ -264,6 +271,7 @@ static void __exit simtemp_module_exit(void)
 {
     /* stop timer */
     hrtimer_cancel(&simtemp_DeviceContext.timer);
+    simtemp_ringbuffer_free(&simtemp_DeviceContext.stRingBuff);
      /* elimina sysfs y desregistra misc */
     sysfs_remove_groups(&simtemp_miscdev.this_device->kobj, simtemp_groups);
     misc_deregister(&simtemp_miscdev);
@@ -284,38 +292,50 @@ static int simtemp_release(struct inode *inode, struct file *file)
 static ssize_t simtemp_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
     struct simtemp_dev *device = file->private_data;
-    struct simtemp_sample_v1 sample;
-    unsigned long flags;
+    struct simtemp_sample_v1 *tmp_buf;
+    u32 samples_to_read, samples_read;
+    int ret;
 
-    /* Exit if not exist data into the buffer*/
-    if(*ppos != 0)
-    {
-        return 0;
-    }
-    
-    /*Buffer size validation*/
-    if(count < sizeof(sample))
-    {
-        return -EINVAL;
-    }
+    /* Si el modo es non-blocking y no hay datos, retornar -EAGAIN */
+    if ((file->f_flags & O_NONBLOCK) && simtemp_ringbuffer_empty(&device->stRingBuff))
+        return -EAGAIN;
 
-    /* Copy the last sample produced by the timer */
-    spin_lock_irqsave(&device->sample_lock, flags);
-    sample = device->stsample;
-    spin_unlock_irqrestore(&device->sample_lock, flags);
+    /* Espera bloqueante hasta que haya datos disponibles en el ring buffer */
+    ret = wait_event_interruptible(device->read_wait, !simtemp_ringbuffer_empty(&device->stRingBuff));
+    if (ret)
+        return ret; /* Interrumpido por una señal */
 
-    if (copy_to_user(buf, &sample, sizeof(sample))) {
+    /* Calcular cuántas muestras caben en el buffer del usuario */
+    samples_to_read = count / sizeof(struct simtemp_sample_v1);
+    if (samples_to_read == 0)
+        return -EINVAL; /* El buffer del usuario es demasiado pequeño */
+
+    tmp_buf = kcalloc(samples_to_read, sizeof(struct simtemp_sample_v1), GFP_KERNEL);
+    if (!tmp_buf)
+        return -ENOMEM;
+
+    samples_read = simtemp_ringbuffer_read(&device->stRingBuff, tmp_buf, samples_to_read);
+
+    if (copy_to_user(buf, tmp_buf, samples_read * sizeof(struct simtemp_sample_v1))) {
+        kfree(tmp_buf);
         return -EFAULT;
     }
 
-    *ppos = sizeof(sample);
-    return sizeof(struct simtemp_sample_v1);
+    kfree(tmp_buf);
+    return samples_read * sizeof(struct simtemp_sample_v1);
 }
 
 static unsigned int simtemp_poll(struct file *file, poll_table *wait)
 {
-    /* Ringbuffer integration is on standby: poll() currently returns 0 */
-    return 0;
+    struct simtemp_dev *dev = file->private_data;
+    unsigned int mask = 0;
+
+    poll_wait(file, &dev->read_wait, wait);
+
+    if (!simtemp_ringbuffer_empty(&dev->stRingBuff))
+        mask |= POLLIN | POLLRDNORM; /* Hay datos para leer */
+
+    return mask;
 }
 
 static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
@@ -340,10 +360,10 @@ static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg
             return -EFAULT;
         if (tmp > SIMTEMP_MODE_CONTINUOUS)
             return -EINVAL;
-        /* Solo se puede cambiar el modo si está detenido */
+        /* Solo se puede cambiar el modo si está detenido (bloqueo a nivel de política) */
         if (dev->state == SIMTEMP_enSTATE_RUN)
             return -EBUSY;
-        dev->mode = (enum ensimtemp_mode)tmp;
+        dev->mode = (enum simtemp_mode)tmp;
         return 0;
     case SIMTEMP_IOC_GET_PERIOD:
         tmp = dev->u32Period_ms;
