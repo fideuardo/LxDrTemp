@@ -9,7 +9,7 @@
 #include <linux/miscdevice.h>
 
 /*Own libraries*/
-#include <nxp_simtemp_ringbuf.h>
+#include <simtemp_ringbuf.h>
 #include <uapi/simtemp_uapi.h>
 
 /*Operation Modes */
@@ -42,7 +42,7 @@ struct nxp_simtemp_dev {
     /*user section */
     enum nxp_simtemp_mode mode;
     /*data section*/
-    struct nxp_simtemp_ringbuffer stRingBuff; /* Ring buffer instance */
+    struct simtemp_ringbuffer stRingBuff; /* Ring buffer instance */
     
 };
 

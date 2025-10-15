@@ -58,7 +58,7 @@ static struct miscdevice nxp_simtemp_miscdev = {
 
 /* --- State control helper functions --- */
 
-static int nxp_simtemp_start_sampler(struct simtemp_dev *dev)
+static int nxp_simtemp_start_sampler(struct nxp_simtemp_dev *dev)
 {
 	ktime_t kt;
 
@@ -73,7 +73,7 @@ static int nxp_simtemp_start_sampler(struct simtemp_dev *dev)
 	return 0;
 }
 
-static int nxp_simtemp_stop_sampler(struct simtemp_dev *dev)
+static int nxp_simtemp_stop_sampler(struct nxp_simtemp_dev *dev)
 {
 	if (dev->state == SIMTEMP_enSTATE_STOP)
 		return 0; /* Already stopped, not an error */
@@ -91,14 +91,14 @@ static int nxp_simtemp_stop_sampler(struct simtemp_dev *dev)
  */
 static ssize_t state_show(struct device *stdevice, struct device_attribute *attr, char *buffer)
 {
-    struct simtemp_dev *driver_data = dev_get_drvdata(stdevice);
+    struct nxp_simtemp_dev *driver_data = dev_get_drvdata(stdevice);
     return sysfs_emit(buffer, "%d\n", driver_data->state);
 }
 
 
 static ssize_t state_store(struct device *stdevice, struct device_attribute *attr, const char *buffer, size_t count)
 {
-    struct simtemp_dev *dev = dev_get_drvdata(stdevice);
+    struct nxp_simtemp_dev *dev = dev_get_drvdata(stdevice);
     int ret;
 
     if (sysfs_streq(buffer, "STOP")) {
@@ -120,13 +120,13 @@ static DEVICE_ATTR_RW(state);
  */
 static ssize_t sampling_ms_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct simtemp_dev *sd = dev_get_drvdata(dev);
+	struct nxp_simtemp_dev *sd = dev_get_drvdata(dev);
 	return sysfs_emit(buf, "%u\n", sd->u32Period_ms);
 }
 
 static ssize_t sampling_ms_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
-	struct simtemp_dev *sd = dev_get_drvdata(dev);
+	struct nxp_simtemp_dev *sd = dev_get_drvdata(dev);
 	u32 new_period;
 	int ret;
 
@@ -153,13 +153,13 @@ static DEVICE_ATTR_RW(sampling_ms);
  */
 static ssize_t operation_mode_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct simtemp_dev *sd = dev_get_drvdata(dev);
+	struct nxp_simtemp_dev *sd = dev_get_drvdata(dev);
 	return sysfs_emit(buf, "%s\n", sd->mode == SIMTEMP_MODE_CONTINUOUS ? "continuous" : "one-shot");
 }
 
 static ssize_t operation_mode_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
-	struct simtemp_dev *sd = dev_get_drvdata(dev);
+	struct nxp_simtemp_dev *sd = dev_get_drvdata(dev);
 
 	/* Reject mode change if running */
 	if (sd->state == SIMTEMP_enSTATE_RUN)
