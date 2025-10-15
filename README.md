@@ -1,23 +1,36 @@
 # LxDrTemp: Linux Driver Temperature Demo
 Author: Fidel Cabañas (fideuardo@gmail.com)
 
-## Development Environment
+## Overview
 
-### Windows (WSL)
+`simtemp` is a Linux kernel module that simulates a temperature sensor. It serves as a demonstration of modern Linux driver development practices, including:
 
-* For install WSL refet to: [Install WSL](https://learn.microsoft.com/es-es/windows/wsl/install)
+*   **Platform Driver Model:** Binds to a device defined in the Device Tree.
+*   **Misc Device:** Exposes a simple character device interface (`/dev/simtemp`).
+*   **HRTimer:** Used for high-resolution, periodic sampling.
+*   **Sysfs:** Provides a runtime configuration interface for parameters like sampling period and operation mode.
+*   **IOCTL:** Offers an alternative interface for application control.
+*   **Poll/Epoll:** Supports asynchronous I/O for efficient data consumption.
 
-* Install WSL2-Linux-Kernel
+## Features
 
-    Install the kernel headers in the path: */lib/modules/$(shell uname -r)/*
+*   **Two Operation Modes:**
+    *   `continuous`: Generates samples periodically.
+    *   `one-shot`: Generates a single sample and stops.
+*   **Configurable Sampling Period:** The sampling rate can be adjusted at runtime via Sysfs.
+*   **Device Tree Support:** Default parameters (period, mode) can be set via a Device Tree overlay.
+*   **Efficient Data Buffering:** Uses a ring buffer to store samples, preventing data loss between the kernel and user space.
 
+## Building the Driver
 
+### Prerequisites
 
-### Linux (ubuntu 24.04)
+Before building, ensure you have the necessary tools and kernel headers installed.
 
-* install kernel header
+**On Debian/Ubuntu/Raspberry Pi OS:**
 ```bash
-sudo apt install linux-headers-$(uname -r)
+sudo apt update
+sudo apt install build-essential linux-headers-$(uname -r) device-tree-compiler
 ```
 * Install buid essential
 
@@ -73,12 +86,3 @@ hexdump -C sample.bin
 ```bash
 cat /dev/simtemp > /dev/null 
 ```
-
-
-
-
-
-
-
-
-
