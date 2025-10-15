@@ -38,7 +38,12 @@ sudo apt install build-essential linux-headers-$(uname -r) libelf-dev dkms
 ## How to Use the Driver
 
 ### 1. Loading and Unloading the Module
-
+*    **Load dtoverlay**
+        ```bash
+        sudo cp simtemp.dtbo /boot/overlays/
+        sudo dtoverlay nxp-simtemp
+        ```
+    
 *   **Load the driver into the kernel:**
     ```bash
     sudo insmod nxp_simtemp.ko
@@ -54,6 +59,37 @@ sudo apt install build-essential linux-headers-$(uname -r) libelf-dev dkms
     sudo rmmod nxp_simtemp
     ```
 
+### 2. Device Tree Overlay (Crucial para la Carga)
+
+Este es un `platform_driver`, lo que significa que necesita que un `platform_device` sea declarado en el Device Tree para que la función `probe` sea llamada.
+
+1.  **Crea el fichero de overlay `nxp-simtemp-overlay.dts`:**
+    ```dts
+    /dts-v1/;
+    /plugin/;
+
+    / {
+        compatible = "brcm,bcm2835"; // Específico para Raspberry Pi
+
+        fragment@0 {
+            target-path = "/";
+            __overlay__ {
+                simtemp: simtemp@0 {
+                    compatible = "nxp,simtemp";
+                    status = "okay";
+                };
+            };
+        };
+    };
+    ```
+
+2.  **Compila e instala el overlay:**
+    ```bash
+    dtc -@ -I dts -O dtb -o nxp-simtemp.dtbo nxp-simtemp-overlay.dts
+    sudo cp nxp-simtemp.dtbo /boot/overlays/
+    sudo dtoverlay nxp-simtemp
+    ```
+
 ### 2. Sysfs Interface (Configuration)
 
 The driver exposes its parameters via files in `/sys/class/misc/nxp_simtemp/`. Use `cat` to read and `echo ... | sudo tee ...` to write.
@@ -62,11 +98,24 @@ The driver exposes its parameters via files in `/sys/class/misc/nxp_simtemp/`. U
     ```bash
     cat /sys/class/misc/nxp_simtemp/state
     ```
+*   **Set Operation Mode ("continuous" or "one-shot"):**
+    ```bash
+    echo "one-shot" | sudo tee /sys/class/misc/nxp_simtemp/operation_mode
+    ```
+    o, para volver al modo por defecto:
+    ```bash
+    echo "continuous" | sudo tee /sys/class/misc/nxp_simtemp/operation_mode
+   ```
 
 *   **Start the sampler:**
     ```bash
     echo RUN | sudo tee /sys/class/misc/nxp_simtemp/state
     ```
+    **Stop the sampler:**
+    ```bash
+    echo STOP | sudo tee /sys/class/misc/nxp_simtemp/state
+   ```
+   
 
 *   **Change sampling period to 200ms (must be stopped first):**
     ```bash
