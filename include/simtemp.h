@@ -39,13 +39,9 @@ struct simtemp_dev {
     u32 u32Period_ms;
     /* sequence counter for samples */
     u64 u64SequenceNumber;
-    /* lock protecting stsample and sequence */
-    bool data_ready; /* Flag to signal new data for poll/read */
-    spinlock_t sample_lock;
     /*user section */
     enum simtemp_mode mode;
     /*data section*/
-    struct simtemp_sample_v1 stsample; /* Current sample */
     struct simtemp_ringbuffer stRingBuff; /* Ring buffer instance */
     
 };
