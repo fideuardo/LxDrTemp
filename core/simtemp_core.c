@@ -16,49 +16,49 @@
 
 
 /* Own includes */
-#include "simtemp.h"
+#include "nxp_simtemp.h"
 #include <uapi/simtemp_uapi.h>
 
 /* Function Prototypes */
 /* Platform driver functions */
-static int simtemp_probe(struct platform_device *pdev);
-static void simtemp_remove(struct platform_device *pdev);
+static int nxp_simtemp_probe(struct platform_device *pdev);
+static void nxp_simtemp_remove(struct platform_device *pdev);
 
 /* File operations functions */
-static int simtemp_open(struct inode *inode, struct file *file);
-static int simtemp_release(struct inode *inode, struct file *file);
-static ssize_t simtemp_read(struct file *file, char __user *buf, size_t count, loff_t *ppos);
-static __poll_t simtemp_poll(struct file *file, poll_table *wait);
+static int nxp_simtemp_open(struct inode *inode, struct file *file);
+static int nxp_simtemp_release(struct inode *inode, struct file *file);
+static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t count, loff_t *ppos);
+static __poll_t nxp_simtemp_poll(struct file *file, poll_table *wait);
 
 
 /* Global Variables */
 /* default ring buffer size (samples) */
 #define SIMTEMP_DEFAULT_RING_SIZE 16
 
-static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+static long nxp_simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
 
-static const struct file_operations simtemp_fops =
+static const struct file_operations nxp_simtemp_fops =
 {
     /* data */
     .owner   = THIS_MODULE,
-    .open    = simtemp_open,
-    .release = simtemp_release,
-    .read    = simtemp_read,
-    .poll    = simtemp_poll,
+    .open    = nxp_simtemp_open,
+    .release = nxp_simtemp_release,
+    .read    = nxp_simtemp_read,
+    .poll    = nxp_simtemp_poll,
     .llseek  = noop_llseek,
-    .unlocked_ioctl = simtemp_ioctl,
+    .unlocked_ioctl = nxp_simtemp_ioctl,
 };
 
-static struct miscdevice simtemp_miscdev = {
+static struct miscdevice nxp_simtemp_miscdev = {
     .minor = MISC_DYNAMIC_MINOR,
-    .name = "simtemp",
-    .fops = &simtemp_fops,
+    .name = "nxp_simtemp",
+    .fops = &nxp_simtemp_fops,
     .mode = 0666,
 };
 
 /* --- State control helper functions --- */
 
-static int simtemp_start_sampler(struct simtemp_dev *dev)
+static int nxp_simtemp_start_sampler(struct nxp_simtemp_dev *dev)
 {
 	ktime_t kt;
 
@@ -73,7 +73,7 @@ static int simtemp_start_sampler(struct simtemp_dev *dev)
 	return 0;
 }
 
-static int simtemp_stop_sampler(struct simtemp_dev *dev)
+static int nxp_simtemp_stop_sampler(struct nxp_simtemp_dev *dev)
 {
 	if (dev->state == SIMTEMP_enSTATE_STOP)
 		return 0; /* Already stopped, not an error */
@@ -91,20 +91,20 @@ static int simtemp_stop_sampler(struct simtemp_dev *dev)
  */
 static ssize_t state_show(struct device *stdevice, struct device_attribute *attr, char *buffer)
 {
-    struct simtemp_dev *driver_data = dev_get_drvdata(stdevice);
+    struct nxp_simtemp_dev *driver_data = dev_get_drvdata(stdevice);
     return sysfs_emit(buffer, "%d\n", driver_data->state);
 }
 
 
 static ssize_t state_store(struct device *stdevice, struct device_attribute *attr, const char *buffer, size_t count)
 {
-    struct simtemp_dev *dev = dev_get_drvdata(stdevice);
+    struct nxp_simtemp_dev *dev = dev_get_drvdata(stdevice);
     int ret;
 
     if (sysfs_streq(buffer, "STOP")) {
-        ret = simtemp_stop_sampler(dev);
+        ret = nxp_simtemp_stop_sampler(dev);
     } else if (sysfs_streq(buffer, "RUN")) {
-        ret = simtemp_start_sampler(dev);
+        ret = nxp_simtemp_start_sampler(dev);
     } else {
         ret = -EINVAL;
     }
@@ -120,13 +120,13 @@ static DEVICE_ATTR_RW(state);
  */
 static ssize_t sampling_ms_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct simtemp_dev *sd = dev_get_drvdata(dev);
+	struct nxp_simtemp_dev *sd = dev_get_drvdata(dev);
 	return sysfs_emit(buf, "%u\n", sd->u32Period_ms);
 }
 
 static ssize_t sampling_ms_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
-	struct simtemp_dev *sd = dev_get_drvdata(dev);
+	struct nxp_simtemp_dev *sd = dev_get_drvdata(dev);
 	u32 new_period;
 	int ret;
 
@@ -153,13 +153,13 @@ static DEVICE_ATTR_RW(sampling_ms);
  */
 static ssize_t operation_mode_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct simtemp_dev *sd = dev_get_drvdata(dev);
+	struct nxp_simtemp_dev *sd = dev_get_drvdata(dev);
 	return sysfs_emit(buf, "%s\n", sd->mode == SIMTEMP_MODE_CONTINUOUS ? "continuous" : "one-shot");
 }
 
 static ssize_t operation_mode_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
-	struct simtemp_dev *sd = dev_get_drvdata(dev);
+	struct nxp_simtemp_dev *sd = dev_get_drvdata(dev);
 
 	/* Reject mode change if running */
 	if (sd->state == SIMTEMP_enSTATE_RUN)
@@ -178,20 +178,20 @@ static DEVICE_ATTR_RW(operation_mode);
 
 
 /* Attribute group to be created/removed together */
-static struct attribute *simtemp_attrs[] = {
+static struct attribute *nxp_simtemp_attrs[] = {
     &dev_attr_state.attr,
 	&dev_attr_sampling_ms.attr,
 	&dev_attr_operation_mode.attr,
 	NULL,
 };
-ATTRIBUTE_GROUPS(simtemp);
+ATTRIBUTE_GROUPS(nxp_simtemp);
 
 
 /* --- Core Functions --- */
 
-static enum hrtimer_restart simtemp_timer_cb(struct hrtimer *timer)
+static enum hrtimer_restart nxp_simtemp_timer_cb(struct hrtimer *timer)
 {
-    struct simtemp_dev *dev = container_of(timer, struct simtemp_dev, timer);
+    struct nxp_simtemp_dev *dev = container_of(timer, struct nxp_simtemp_dev, timer);
     struct simtemp_sample_v1 sample;
 
     /* simple deterministic temperature model: base 25000 mC + (seq % 100) */
@@ -205,13 +205,13 @@ static enum hrtimer_restart simtemp_timer_cb(struct hrtimer *timer)
     if (dev->mode == SIMTEMP_MODE_ONESHOT) {
         sample.flags |= SIMTEMP_FLAG_ONESHOT_DONE;
         dev->state = SIMTEMP_enSTATE_STOP; /* State transition */
-        simtemp_ringbuffer_write(&dev->stRingBuff, &sample);
+        nxp_simtemp_ringbuffer_write(&dev->stRingBuff, &sample);
         wake_up_interruptible(&dev->read_wait);
         return HRTIMER_NORESTART;
     }
 
     /* Write to the ring buffer. The lock is inside the write function. */
-    simtemp_ringbuffer_write(&dev->stRingBuff, &sample);
+    nxp_simtemp_ringbuffer_write(&dev->stRingBuff, &sample);
 
     /* wake readers */
     wake_up_interruptible(&dev->read_wait);
@@ -226,33 +226,32 @@ static enum hrtimer_restart simtemp_timer_cb(struct hrtimer *timer)
  * which in turn got it from the platform_device during probe.
  */
 
-static int simtemp_open(struct inode *inode, struct file *file)
+static int nxp_simtemp_open(struct inode *inode, struct file *file)
 {
 	/* Obtenemos el contexto del driver desde el dispositivo misc,
 	 * donde fue almacenado durante el probe. */
-	struct simtemp_dev *sdev = dev_get_drvdata(simtemp_miscdev.this_device);
+	struct nxp_simtemp_dev *sdev = dev_get_drvdata(nxp_simtemp_miscdev.this_device);
 	file->private_data = sdev;
     return 0;
 }
 
-static int simtemp_release(struct inode *inode, struct file *file)
+static int nxp_simtemp_release(struct inode *inode, struct file *file)
 {
     return 0;
 }
 
-static ssize_t simtemp_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
-    struct simtemp_dev *device = file->private_data;
+    struct nxp_simtemp_dev *device = file->private_data;
     struct simtemp_sample_v1 *tmp_buf;
     u32 samples_to_read, samples_read;
     int ret;
 
-    /* If in non-blocking mode and no data is available, return -EAGAIN */
-    if ((file->f_flags & O_NONBLOCK) && simtemp_ringbuffer_empty(&device->stRingBuff))
+    if ((file->f_flags & O_NONBLOCK) && nxp_simtemp_ringbuffer_empty(&device->stRingBuff))
         return -EAGAIN;
 
     /* Blocking wait until data is available in the ring buffer */
-    ret = wait_event_interruptible(device->read_wait, !simtemp_ringbuffer_empty(&device->stRingBuff));
+    ret = wait_event_interruptible(device->read_wait, !nxp_simtemp_ringbuffer_empty(&device->stRingBuff));
     if (ret)
         return ret; /* Interrupted by a signal */
 
@@ -265,7 +264,7 @@ static ssize_t simtemp_read(struct file *file, char __user *buf, size_t count, l
     if (!tmp_buf)
         return -ENOMEM;
 
-    samples_read = simtemp_ringbuffer_read(&device->stRingBuff, tmp_buf, samples_to_read);
+    samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, tmp_buf, samples_to_read);
 
     if (copy_to_user(buf, tmp_buf, samples_read * sizeof(struct simtemp_sample_v1))) {
         kfree(tmp_buf);
@@ -276,30 +275,30 @@ static ssize_t simtemp_read(struct file *file, char __user *buf, size_t count, l
     return samples_read * sizeof(struct simtemp_sample_v1);
 }
 
-static __poll_t simtemp_poll(struct file *file, poll_table *wait)
+static __poll_t nxp_simtemp_poll(struct file *file, poll_table *wait)
 {
-    struct simtemp_dev *dev = file->private_data;
+    struct nxp_simtemp_dev *dev = file->private_data;
     __poll_t mask = 0;
 
     poll_wait(file, &dev->read_wait, wait);
 
-    if (!simtemp_ringbuffer_empty(&dev->stRingBuff))
+    if (!nxp_simtemp_ringbuffer_empty(&dev->stRingBuff))
         mask |= POLLIN | POLLRDNORM; /* Data is available for reading */
 
     return mask;
 }
 
-static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long nxp_simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
-    struct simtemp_dev *dev = file->private_data;
+    struct nxp_simtemp_dev *dev = file->private_data;
     u32 tmp;    
 
     switch (cmd) {
     case SIMTEMP_IOC_START:
-        return simtemp_start_sampler(dev);
+        return nxp_simtemp_start_sampler(dev);
 
     case SIMTEMP_IOC_STOP:
-        return simtemp_stop_sampler(dev);
+        return nxp_simtemp_stop_sampler(dev);
 
     case SIMTEMP_IOC_GET_MODE:
         tmp = (u32)dev->mode;
@@ -314,7 +313,7 @@ static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg
         /* Mode can only be changed when stopped (policy-level lock) */
         if (dev->state == SIMTEMP_enSTATE_RUN)
             return -EBUSY;
-        dev->mode = (enum simtemp_mode)tmp;
+        dev->mode = (enum nxp_simtemp_mode)tmp;
         return 0;
     case SIMTEMP_IOC_GET_PERIOD:
         tmp = dev->u32Period_ms;
@@ -341,15 +340,15 @@ static long simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 
 /* --- Platform Driver Implementation --- */
 
-static const struct of_device_id simtemp_of_match[] = {
-	{ .compatible = "simtemp,collector" },
+static const struct of_device_id nxp_simtemp_of_match[] = {
+	{ .compatible = "nxp,simtemp" },
 	{ /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(of, simtemp_of_match);
+MODULE_DEVICE_TABLE(of, nxp_simtemp_of_match);
 
-static int simtemp_probe(struct platform_device *pdev)
+static int nxp_simtemp_probe(struct platform_device *pdev)
 {
-	struct simtemp_dev *sdev;
+	struct nxp_simtemp_dev *sdev;
 	int ret;
 
 	/* 1. Allocate memory for the device context */
@@ -365,22 +364,22 @@ static int simtemp_probe(struct platform_device *pdev)
 	sdev->dev = &pdev->dev;
 
 	/* 3. Parse the Device Tree */
-	simtemp_of_parse(&pdev->dev, sdev);
+	nxp_simtemp_of_parse(&pdev->dev, sdev);
 
 	/* 4. Initialize driver components */
-	ret = simtemp_ringbuffer_alloc(&sdev->stRingBuff, SIMTEMP_DEFAULT_RING_SIZE, true);
+	ret = nxp_simtemp_ringbuffer_alloc(&sdev->stRingBuff, SIMTEMP_DEFAULT_RING_SIZE, true);
 	if (ret)
 		return ret;
 
 	init_waitqueue_head(&sdev->read_wait);
 	hrtimer_init(&sdev->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	sdev->timer.function = simtemp_timer_cb;
+	sdev->timer.function = nxp_simtemp_timer_cb;
 
 	/* 5. Register the miscdevice */
-	ret = misc_register(&simtemp_miscdev);
+	ret = misc_register(&nxp_simtemp_miscdev);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to register misc device\n");
-		simtemp_ringbuffer_free(&sdev->stRingBuff);
+		nxp_simtemp_ringbuffer_free(&sdev->stRingBuff);
 		return ret;
 	}
 	/*
@@ -388,46 +387,46 @@ static int simtemp_probe(struct platform_device *pdev)
 	 * that the miscdevice has just created. This is crucial so that
 	 * sysfs and open functions can find the context.
 	 */
-	dev_set_drvdata(simtemp_miscdev.this_device, sdev);
+	dev_set_drvdata(nxp_simtemp_miscdev.this_device, sdev);
 
 	/* 6. Create the sysfs files */
-	ret = sysfs_create_groups(&simtemp_miscdev.this_device->kobj, simtemp_groups);
+	ret = sysfs_create_groups(&nxp_simtemp_miscdev.this_device->kobj, nxp_simtemp_groups);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to create sysfs files\n");
-		misc_deregister(&simtemp_miscdev);
-		simtemp_ringbuffer_free(&sdev->stRingBuff);
+		misc_deregister(&nxp_simtemp_miscdev);
+		nxp_simtemp_ringbuffer_free(&sdev->stRingBuff);
 		return ret;
 	}
 
 	/* 7. Save the context in the platform_device for use in remove() */
 	platform_set_drvdata(pdev, sdev);
 
-	pr_info("simtemp: loaded (miscdevice: /dev/simtemp)\n");
+	pr_info("nxp_simtemp: loaded (miscdevice: /dev/nxp_simtemp)\n");
 	return 0;
 }
 
-static void simtemp_remove(struct platform_device *pdev)
+static void nxp_simtemp_remove(struct platform_device *pdev)
 {
-	struct simtemp_dev *sdev = platform_get_drvdata(pdev);
+	struct nxp_simtemp_dev *sdev = platform_get_drvdata(pdev);
 
 	/* Cleanup in reverse order of probe */
-	sysfs_remove_groups(&simtemp_miscdev.this_device->kobj, simtemp_groups);
-	misc_deregister(&simtemp_miscdev);
+	sysfs_remove_groups(&nxp_simtemp_miscdev.this_device->kobj, nxp_simtemp_groups);
+	misc_deregister(&nxp_simtemp_miscdev);
 	hrtimer_cancel(&sdev->timer);
-	simtemp_ringbuffer_free(&sdev->stRingBuff);
+	nxp_simtemp_ringbuffer_free(&sdev->stRingBuff);
 
-	pr_info("simtemp: unloaded\n");
+	pr_info("nxp_simtemp: unloaded\n");
 }
 
-static struct platform_driver simtemp_platform_driver = {
+static struct platform_driver nxp_simtemp_platform_driver = {
 	.driver = {
-		.name = "simtemp",
-		.of_match_table = simtemp_of_match,
+		.name = "nxp_simtemp",
+		.of_match_table = nxp_simtemp_of_match,
 	},
-	.probe = simtemp_probe,
-	.remove = simtemp_remove,
+	.probe = nxp_simtemp_probe,
+	.remove = nxp_simtemp_remove,
 };
-module_platform_driver(simtemp_platform_driver);
+module_platform_driver(nxp_simtemp_platform_driver);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Fidel Eduardo Cabañas Castillo");

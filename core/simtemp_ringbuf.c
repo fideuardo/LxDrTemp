@@ -3,7 +3,7 @@
 #include <linux/string.h>
 
 /*own includes*/
-#include "simtemp.h"
+#include "nxp_simtemp.h"
 
 /*--------------------------------------------------------------------------------------------------------*/
 /*int  simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff     -> Ring Buffer structure        */
@@ -13,7 +13,7 @@
 /*         -EINVAL -> Invalid Argument                                                                    */
 /*         -ENOMEM -> Out of memory                                                                       */
 /*--------------------------------------------------------------------------------------------------------*/
-int  simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff, u32 u32BufferSize, bool boDropOldest)
+int nxp_simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff, u32 u32BufferSize, bool boDropOldest)
 {
     /*Size validation for ring buffer implementation*/
     if(0 == u32BufferSize )
@@ -42,7 +42,7 @@ int  simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff, u32 u32Buff
     return 0;
 }
 
-void simtemp_ringbuffer_free(struct simtemp_ringbuffer *srRingBuff)
+void nxp_simtemp_ringbuffer_free(struct simtemp_ringbuffer *srRingBuff)
 {
     kfree(srRingBuff->stBuffer);
     srRingBuff->stBuffer = NULL;
@@ -57,7 +57,7 @@ static u32 simtemp__u32levellock(struct simtemp_ringbuffer *srRingBuff)
 }
 
 /* FIX: Typo en el nombre de la estructura */
-bool simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample)
+bool nxp_simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample)
 {
     unsigned long ulflags;
     u32 u32bufferused;
@@ -101,7 +101,7 @@ bool simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct simt
 }
 
 /* FIX: Typo en el nombre de la estructura */
-u32 simtemp_ringbuffer_read(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample, u32 u32Count)
+u32 nxp_simtemp_ringbuffer_read(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample, u32 u32Count)
 {
     unsigned long ulflags;
     u32 u32bufferused;
@@ -134,7 +134,7 @@ u32 simtemp_ringbuffer_read(struct simtemp_ringbuffer *srRingBuff, struct simtem
 }
 
 
-bool simtemp_ringbuffer_empty(struct simtemp_ringbuffer *srRingBuff)
+bool nxp_simtemp_ringbuffer_empty(struct simtemp_ringbuffer *srRingBuff)
 {
     unsigned long ulflags;
     bool status = false;
@@ -147,7 +147,7 @@ bool simtemp_ringbuffer_empty(struct simtemp_ringbuffer *srRingBuff)
     return status;
 }
 
-u32 simtemp_ringbuffer_level(struct simtemp_ringbuffer *srRingBuff)
+u32 nxp_simtemp_ringbuffer_level(struct simtemp_ringbuffer *srRingBuff)
 {
     unsigned long ulflags;
     u32 u32value;
