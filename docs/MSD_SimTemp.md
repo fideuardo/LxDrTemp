@@ -56,7 +56,7 @@ This document specifies the detailed software design for the **Sampler Data Coll
 - FR‑02: Support **modes**: `continuous` and `one-shot`.
 - FR‑03: User‑space **read** returns binary samples in FIFO order.
 - FR‑04: **poll/epoll** signals data availability and threshold alerts.
-- FR‑05: Samples include **timestamp (ns)** and **effective period (µs)**.
+- FR‑05: Samples include **timestamp (ns)** and status **flags**.
 - FR‑06: **Threshold** alerting with rising/falling/both edge policies.
 - FR‑07: Ring buffer protects against overrun with defined policy.
 - FR‑08: Runtime configuration via **sysfs** + **ioctl**, defaults from **DT**.
@@ -177,12 +177,11 @@ This section defines the **system use cases** consistent with the frozen design 
 - A1: Flapping near threshold is mitigated by 50 mC hysteresis.  
 **Trace:** FR-04, FR-06; IF-POLL-01.
 
-##### UC-09 Clear threshold alert (read-to-clear / ioctl)
+##### UC-09 Clear threshold alert (ioctl)
 **Primary Actor:** App  
 **Preconditions:** Alert pending from UC-08.  
-**Flow (read-to-clear):**  
-1. App performs `read()`; the sample indicating the edge has `flags&THR_EDGE`.  
-2. Pending alert is cleared.  
+**Flow (read-to-clear - DEPRECATED):**  
+1. App performs `read()`; a sample with `flags&THR_EDGE` clears the alert.  
 **Flow (ioctl):**  
 1. App calls `SIMTEMP_IOC_CLR_ALERT` to clear without consuming data.  
 **Trace:** FR-04, FR-06; IF-POLL-01, IF-IOCTL-01.
@@ -193,8 +192,8 @@ This section defines the **system use cases** consistent with the frozen design 
 **Flow:**  
 1. Read a sequence of samples; compute deltas of `ts_ns`.  
 2. Verify `period_us` field equals configured period (± tolerance).  
-3. Verify `flags` reflect expected conditions (e.g., none set).  
-**Acceptance:** Period error within implementation tolerance; no spurious flags.  
+3. Verify `flags` reflect expected conditions (e.g., `OK` bit set).  
+**Acceptance:** Timestamp deltas are consistent with configured period; no spurious flags.  
 **Trace:** FR-05; IF-RD-01.
 
 ##### UC-11 Overrun behavior (overwrite-oldest + EOVERFLOW)
@@ -353,12 +352,10 @@ simtemp/
 #define SIMTEMP_ABI_MAJOR 1
 #define SIMTEMP_ABI_MINOR 0
 
-struct simtemp_sample_v1 {
-    __u64 ts_ns;           /* CLOCK_MONOTONIC_RAW at enqueue */
-    __s32 temperature_mC;  /* e.g., -40000..150000 mC */
-    __u32 period_us;       /* effective period at capture */
-    __u16 flags;           /* bit0=OK, bit1=OVERFLOW, bit2=THR_EDGE, bit3=ONESHOT_DONE */
-    __u16 rsvd;
+struct simtemp_sample {
+    __u64 timestamp_ns;   // monotonic timestamp
+    __s32 temp_mC;        // milli-degree Celsius (e.g., 44123 = 44.123 °C)
+    __u32 flags;          // bit0=OK, bit1=OVERFLOW, bit2=THR_EDGE, bit3=ONESHOT_DONE
 } __attribute__((packed));
 ```
 
@@ -556,4 +553,3 @@ This section enumerates the functions to be implemented, their **location (file)
 - `int simtemp_probe(struct platform_device *pdev);` — Allocate `simtemp_dev`, init ring/core, parse DT, register miscdev, create sysfs, (optionally) debugfs. Rollback on failure.
 - `int simtemp_remove(struct platform_device *pdev);` — Stop/exit core, remove sysfs, deregister miscdev, exit debugfs, free ring and device.
 - `static int __init simtemp_module_init(void);` / `static void __exit simtemp_module_exit(void);` — Register/unregister platform driver.
-

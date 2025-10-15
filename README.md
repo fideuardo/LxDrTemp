@@ -74,8 +74,8 @@ ls -l /dev/simtemp
 
 * **Read one block of data from the device and save it to `sample.bin`:**
 ```bash
-dd if=/dev/simtemp of=sample.bin bs=32 count=1
-```
+# Read one sample (16 bytes) and save it to a file
+dd if=/dev/simtemp of=sample.bin bs=16 count=1
 
 * **Display the content of the read data in hexadecimal format:**
 ```bash
