@@ -147,6 +147,32 @@ static ssize_t sampling_ms_store(struct device *dev, struct device_attribute *at
 static DEVICE_ATTR_RW(sampling_ms);
 
 /*
+ * show/store para 'mode' (normal, noisy, ramp)
+ * Aligned with MSD v0.3
+ */
+static ssize_t mode_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct nxp_simtemp_dev *sd = dev_get_drvdata(dev);
+	const char *mode_str;
+
+	if (sd->sim_mode == SIMTEMP_SIM_NOISY)
+		mode_str = "noisy";
+	else if (sd->sim_mode == SIMTEMP_SIM_RAMP)
+		mode_str = "ramp";
+	else
+		mode_str = "normal";
+
+	return sysfs_emit(buf, "%s\n", mode_str);
+}
+
+static ssize_t mode_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	/* Placeholder for implementation */
+	return -ENOSYS;
+}
+static DEVICE_ATTR_RW(mode);
+
+/*
  * show/store para 'operation_mode'
  * Allows reading/writing the operation mode: "continuous" or "one-shot".
  * Writing is only allowed if the timer is stopped.
@@ -176,12 +202,27 @@ static ssize_t operation_mode_store(struct device *dev, struct device_attribute 
 }
 static DEVICE_ATTR_RW(operation_mode);
 
+/*
+ * show para 'stats' (Read-Only)
+ * Aligned with MSD v0.3
+ */
+static ssize_t stats_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct nxp_simtemp_dev *sd = dev_get_drvdata(dev);
+	return sysfs_emit(buf, "samples=%llu overruns=%u alerts=%u\n",
+			  sd->u64SequenceNumber,
+			  sd->stRingBuff.u32OverRuns,
+			  sd->u32Alerts);
+}
+static DEVICE_ATTR_RO(stats);
 
 /* Attribute group to be created/removed together */
 static struct attribute *nxp_simtemp_attrs[] = {
     &dev_attr_state.attr,
 	&dev_attr_sampling_ms.attr,
-	&dev_attr_operation_mode.attr,
+	&dev_attr_operation_mode.attr, /* Legacy, should be reviewed */
+	&dev_attr_mode.attr,
+	&dev_attr_stats.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(nxp_simtemp);
@@ -195,8 +236,22 @@ static enum hrtimer_restart nxp_simtemp_timer_cb(struct hrtimer *timer)
     struct simtemp_sample_v1 sample;
 
     /* simple deterministic temperature model: base 25000 mC + (seq % 100) */
+    /* MSD v0.3: Implement normal, noisy, ramp modes */
     sample.timestamp_ns = ktime_get_ns();
-    sample.temp_mC = 25000 + (dev->u64SequenceNumber % 100);
+
+    switch (dev->sim_mode) {
+    case SIMTEMP_SIM_NOISY:
+        /* Placeholder: 25°C +/- 2°C random noise */
+        sample.temp_mC = 25000 + (get_random_u32() % 4000) - 2000;
+        break;
+    case SIMTEMP_SIM_RAMP:
+        sample.temp_mC = 20000 + ((dev->u64SequenceNumber * 50) % 20000); /* Ramp 20-40°C */
+        break;
+    case SIMTEMP_SIM_NORMAL:
+    default:
+        sample.temp_mC = 25000 + (get_random_u32() % 200) - 100; /* 25°C +/- 0.1°C */
+        break;
+    }
     
     sample.flags = SIMTEMP_FLAG_OK;
     dev->u64SequenceNumber++;
