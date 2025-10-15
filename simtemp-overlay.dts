@@ -5,13 +5,12 @@
     fragment@0 {
         target-path = "/";
         __overlay__ {
-            simtemp_node: simtemp {
-                compatible = "simtemp,collector";
+            nxp_simtemp_node: nxp_simtemp {
+                compatible = "nxp,simtemp";
                 status = "okay";
 
-                /* Propiedades para sobreescribir los valores por defecto */
-                sample-period-us = <500000>; /* 500 ms */
-                operation-mode = "one-shot";
+                /* Propiedades según MSD v0.3 */
+                sampling-ms = <500>; /* 500 ms */
             };
         };
     };
