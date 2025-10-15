@@ -436,10 +436,18 @@ static int nxp_simtemp_probe(struct platform_device *pdev)
 	nxp_simtemp_of_parse(&pdev->dev, sdev);
 
 	/* 4. Initialize driver components */
-	ret = nxp_simtemp_ringbuffer_alloc(&sdev->stRingBuff, SIMTEMP_DEFAULT_RING_SIZE, true);
-	if (ret)
-		return ret;
+	/*
+	 * Allocate the ring buffer's internal buffer using devm_kcalloc.
+	 * This ties its lifetime to the device, simplifying cleanup in remove().
+	 */
+	sdev->stRingBuff.pstSamples = devm_kcalloc(&pdev->dev, SIMTEMP_DEFAULT_RING_SIZE,
+						   sizeof(*sdev->stRingBuff.pstSamples),
+						   GFP_KERNEL);
+	if (!sdev->stRingBuff.pstSamples)
+		return -ENOMEM;
 
+	/* Now initialize the rest of the ring buffer fields */
+	nxp_simtemp_ringbuffer_init(&sdev->stRingBuff, SIMTEMP_DEFAULT_RING_SIZE, true);
 	init_waitqueue_head(&sdev->read_wait);
 	hrtimer_init(&sdev->timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	sdev->timer.function = nxp_simtemp_timer_cb;
@@ -448,7 +456,6 @@ static int nxp_simtemp_probe(struct platform_device *pdev)
 	ret = misc_register(&nxp_simtemp_miscdev);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to register misc device\n");
-		nxp_simtemp_ringbuffer_free(&sdev->stRingBuff);
 		return ret;
 	}
 	/*
@@ -463,7 +470,6 @@ static int nxp_simtemp_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to create sysfs files\n");
 		misc_deregister(&nxp_simtemp_miscdev);
-		nxp_simtemp_ringbuffer_free(&sdev->stRingBuff);
 		return ret;
 	}
 
