@@ -11,6 +11,18 @@
 -   **Sysfs:** Provides a runtime configuration interface for parameters like sampling period, simulation mode, and statistics.
 -   **IOCTL:** Offers an alternative interface for application control.
 -   **Poll/Epoll:** Supports asynchronous I/O for efficient data consumption.
+# Features
+
+*   **Two Operation Modes:**
+    *   `continuous`: Generates samples periodically.
+    *   `one-shot`: Generates a single sample and stops.
+*   **Three Simulation Modes:**
+    *   `noisy` : Introduce samples with noise.
+    *   `ramp`  : Increase the temperature value over the time.
+    *   `normal`: Sample without noise.
+*   **Configurable Sampling Period:** The sampling rate can be adjusted at runtime via Sysfs.
+*   **Device Tree Support:** Default parameters (period, mode) can be set via a Device Tree overlay.
+*   **Efficient Data Buffering:** Uses a ring buffer to store samples, preventing data loss between the kernel and user space.
 
 ## Building the Driver
 
@@ -115,7 +127,7 @@ The driver exposes its parameters via files in `/sys/class/misc/nxp_simtemp/`. U
     ```bash
     echo STOP | sudo tee /sys/class/misc/nxp_simtemp/state
    ```
-   
+
 
 *   **Change sampling period to 200ms (must be stopped first):**
     ```bash

@@ -167,8 +167,22 @@ static ssize_t mode_show(struct device *dev, struct device_attribute *attr, char
 
 static ssize_t mode_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
-	/* Placeholder for implementation */
-	return -ENOSYS;
+	struct nxp_simtemp_dev *sd = dev_get_drvdata(dev);
+
+	/* Reject mode change if running */
+	if (sd->state == SIMTEMP_enSTATE_RUN)
+		return -EBUSY;
+
+	if (sysfs_streq(buf, "normal"))
+		sd->sim_mode = SIMTEMP_SIM_NORMAL;
+	else if (sysfs_streq(buf, "noisy"))
+		sd->sim_mode = SIMTEMP_SIM_NOISY;
+	else if (sysfs_streq(buf, "ramp"))
+		sd->sim_mode = SIMTEMP_SIM_RAMP;
+	else
+		return -EINVAL;
+
+	return count;
 }
 static DEVICE_ATTR_RW(mode);
 
@@ -465,9 +479,9 @@ static void nxp_simtemp_remove(struct platform_device *pdev)
 	struct nxp_simtemp_dev *sdev = platform_get_drvdata(pdev);
 
 	/* Cleanup in reverse order of probe */
+	hrtimer_cancel(&sdev->timer);
 	sysfs_remove_groups(&nxp_simtemp_miscdev.this_device->kobj, nxp_simtemp_groups);
 	misc_deregister(&nxp_simtemp_miscdev);
-	hrtimer_cancel(&sdev->timer);
 	nxp_simtemp_ringbuffer_free(&sdev->stRingBuff);
 
 	pr_info("nxp_simtemp: unloaded\n");
