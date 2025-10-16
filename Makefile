@@ -18,14 +18,19 @@ simtemp-objs := core/simtemp_core.o core/simtemp_dt.o core/simtemp_ringbuf.o
 
 ccflags-y += -I$(src)/include
 
-all:
-	dtc -@ -I dts -O dtb -o simtemp.dtbo nxp-simtemp-overlay.dts
+.PHONY: all clean load unload load_nodt modules dtbo
+
+all: dtbo modules
+
+modules:
 	$(MAKE) -C $(KDIR) M=$(CURDIR) modules
+
+dtbo:
+	dtc -@ -I dts -O dtb -o simtemp.dtbo nxp-simtemp-overlay.dts
 
 clean:
 	$(MAKE) -C $(KDIR) M=$(CURDIR) clean
 	rm -f *.dtbo
-
 load: all
 	-sudo rmmod simtemp || true
 	sudo cp -f simtemp.dtbo /lib/firmware/
@@ -42,5 +47,3 @@ unload:
 	-sudo rmmod simtemp || true
 	-sudo dtoverlay -r simtemp || true
 	dmesg | tail -n 5
-
-.PHONY: all clean load unload load_nodt
