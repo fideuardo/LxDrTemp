@@ -99,8 +99,8 @@ This driver is a `platform_driver`, so a matching `platform_device` must exist i
 
 2.  **Compile and install the overlay:**
     ```bash
-    dtc -@ -I dts -O dtb -o nxp-simtemp.dtbo nxp-simtemp-overlay.dts
-    sudo cp nxp-simtemp.dtbo /boot/overlays/
+    dtc -@ -I dts -O dtb -o simtemp.dtbo nxp-simtemp-overlay.dts
+    sudo cp simtemp.dtbo /boot/overlays/
     sudo dtoverlay simtemp
     ```
 

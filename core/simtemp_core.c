@@ -149,8 +149,13 @@ static ssize_t sampling_ms_store(struct device *dev, struct device_attribute *at
 	if (ret)
 		return ret;
 
-	if (new_period == 0)
+	/* MSD v0.3: Validate period (5-5000ms) */
+	if (new_period < 5 || new_period > 5000) {
+		pr_warn("simtemp: sampling_ms=%u is out of range [5, 5000].\n",
+			new_period);
 		return -EINVAL;
+	}
+
 
 	/* UC-03: Reject period change if running */
 	if (sd->state == SIMTEMP_enSTATE_RUN)
