@@ -312,7 +312,8 @@ static int nxp_simtemp_release(struct inode *inode, struct file *file)
 static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
     struct nxp_simtemp_dev *device = file->private_data;
-    struct simtemp_sample_v1 *tmp_buf;
+    struct simtemp_sample_v1 sample;
+	size_t bytes_read = 0;
     u32 samples_to_read, samples_read;
     int ret;
 
@@ -329,19 +330,21 @@ static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t coun
     if (samples_to_read == 0)
         return -EINVAL; /* User buffer is too small for even one sample */
 
-    tmp_buf = kcalloc(samples_to_read, sizeof(*tmp_buf), GFP_KERNEL);
-    if (!tmp_buf)
-        return -ENOMEM;
+    /*
+     * To avoid large kernel allocations, read one sample at a time
+     * and copy it to the user. This is safer.
+     */
+    while (bytes_read + sizeof(struct simtemp_sample_v1) <= count) {
+        samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, &sample, 1);
+        if (samples_read == 0)
+            break; /* No more data */
 
-    samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, tmp_buf, samples_to_read);
+        if (copy_to_user(buf + bytes_read, &sample, sizeof(sample)))
+            return -EFAULT;
 
-    if (copy_to_user(buf, tmp_buf, samples_read * sizeof(struct simtemp_sample_v1))) {
-        kfree(tmp_buf);
-        return -EFAULT;
+        bytes_read += sizeof(sample);
     }
-
-    kfree(tmp_buf);
-    return samples_read * sizeof(struct simtemp_sample_v1);
+    return bytes_read;
 }
 
 static __poll_t nxp_simtemp_poll(struct file *file, poll_table *wait)
@@ -353,6 +356,12 @@ static __poll_t nxp_simtemp_poll(struct file *file, poll_table *wait)
 
     if (!nxp_simtemp_ringbuffer_empty(&dev->stRingBuff))
         mask |= POLLIN | POLLRDNORM; /* Data is available for reading */
+
+    /* If in one-shot mode and the sampler has stopped, it means the single
+     * sample was produced and the "stream" is finished. */
+    if (dev->mode == SIMTEMP_MODE_ONESHOT && dev->state == SIMTEMP_enSTATE_STOP &&
+        nxp_simtemp_ringbuffer_empty(&dev->stRingBuff))
+        mask |= POLLHUP;
 
     return mask;
 }
@@ -426,12 +435,11 @@ static int nxp_simtemp_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	/* 2. Initialize the device context */
-	sdev->dev = &pdev->dev;
 	sdev->state = SIMTEMP_enSTATE_STOP;
 	sdev->mode = SIMTEMP_MODE_CONTINUOUS; /* Default, will be overwritten by DT */
 	sdev->u32Period_ms = 1000;           /* Default, will be overwritten by DT */
 	sdev->u64SequenceNumber = 0;
-	
+	sdev->dev = &pdev->dev;
 
 	/* 3. Parse the Device Tree */
 	nxp_simtemp_of_parse(&pdev->dev, sdev);
@@ -481,11 +489,6 @@ static void nxp_simtemp_remove(struct platform_device *pdev)
 	hrtimer_cancel(&sdev->timer);
 	sysfs_remove_groups(&nxp_simtemp_miscdev.this_device->kobj, nxp_simtemp_groups);
 	misc_deregister(&nxp_simtemp_miscdev);
-	/*
-	 * No need to call nxp_simtemp_ringbuffer_free(). The memory for the ring buffer
-	 * and for sdev itself was allocated with devm_* functions, so the kernel
-	 * handles the cleanup automatically.
-	 */
 
 	pr_info("nxp_simtemp: unloaded\n");
 }

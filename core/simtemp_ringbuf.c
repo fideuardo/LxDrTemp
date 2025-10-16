@@ -39,13 +39,6 @@ int nxp_simtemp_rb_init(struct nxp_simtemp_dev *sdev, u32 u32size, bool boDropOl
 	return 0;
 }
 
-void nxp_simtemp_ringbuffer_free(struct simtemp_ringbuffer *srRingBuff)
-{
-    kfree(srRingBuff->stBuffer);
-    srRingBuff->stBuffer = NULL;
-    srRingBuff->u32BufferSize = 0;
-}
-
 static u32 simtemp__u32levellock(struct simtemp_ringbuffer *srRingBuff)
 {
     u32 u32value;

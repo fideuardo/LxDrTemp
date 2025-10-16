@@ -35,8 +35,6 @@ struct simtemp_ringbuffer{
 	bool boDropOldest;
 };
 
-int  nxp_simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff, u32 u32BufferSize, bool boDropOldest);
-void nxp_simtemp_ringbuffer_free(struct simtemp_ringbuffer *srRingBuff);
 bool nxp_simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample);
 u32  nxp_simtemp_ringbuffer_read(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample, u32 u32Count);
 bool nxp_simtemp_ringbuffer_empty(struct simtemp_ringbuffer *srRingBuff);
