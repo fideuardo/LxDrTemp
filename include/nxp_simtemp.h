@@ -4,6 +4,7 @@
 #define _NXP_SIMTEMP_H_
 
 /* Kernel includes */
+#include <linux/types.h>
 #include <linux/miscdevice.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
@@ -46,15 +47,18 @@ enum nxp_simtemp_sim_mode {
 struct nxp_simtemp_dev {
 	struct device *dev;
 	struct miscdevice miscdev;
-	enum nxp_simtemp_state state;
-	enum nxp_simtemp_mode mode;
-	enum nxp_simtemp_sim_mode sim_mode;
-	u32 u32Period_ms;
-	u64 u64SequenceNumber;
-	u32 u32Alerts;
 	struct hrtimer timer;
 	struct simtemp_ringbuffer stRingBuff;
 	wait_queue_head_t read_wait;
+	enum nxp_simtemp_state state;
+	enum nxp_simtemp_mode mode;
+	enum nxp_simtemp_sim_mode sim_mode;
+	u64 u64SequenceNumber;
+	s32 s32Threshold_mC;
+	u32 u32Period_ms;
+	u32 u32Alerts;
+	bool boAlertPending;
+	bool boOverflowFlag;
 };
 
 int nxp_simtemp_of_parse(struct device *dev, struct nxp_simtemp_dev *sdev);

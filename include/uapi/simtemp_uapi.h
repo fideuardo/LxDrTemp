@@ -17,6 +17,8 @@ struct simtemp_sample_v1 {
 /* Flags para el campo 'flags' de la muestra */
 #define SIMTEMP_FLAG_OK            (1u << 0) /* Muestra válida */
 #define SIMTEMP_FLAG_ONESHOT_DONE  (1u << 3) /* Muestra final de una operación one-shot */
+#define SIMTEMP_FLAG_OVERFLOW      (1u << 16) /* Muestra fuera de rango */
+#define SIMTEMP_FLAG_THR_EDGE      (1u << 17) /* Umbral de temperatura superado */
 
 /* IOCTL definitions */
 #define SIMTEMP_IOC_MAGIC 'T'
