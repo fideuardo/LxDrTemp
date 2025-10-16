@@ -21,14 +21,16 @@ jobs:
         id: cache-apt
         uses: actions/cache@v4
         with:
-          path: /var/cache/apt/archives
+          path: |
+            /var/cache/apt/archives
+            /var/lib/apt/lists
           key: ${{ runner.os }}-apt-cache-${{ hashFiles('**/Makefile') }}
           restore-keys: |
             ${{ runner.os }}-apt-cache-
 
       - name: Install Dependencies
         run: |
-          sudo apt-get update
+          if [[ "${{ steps.cache-apt.outputs.cache-hit }}" != "true" ]]; then sudo apt-get update; fi
           sudo apt-get install -y build-essential linux-headers-$(uname -r) device-tree-compiler
 
       - name: Compile the driver and device tree
