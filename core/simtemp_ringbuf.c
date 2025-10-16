@@ -2,6 +2,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 
+
 /*own includes*/
 #include "nxp_simtemp.h"
 
@@ -39,6 +40,31 @@ int nxp_simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff, u32 u32B
     /*Init the spin_lock*/
     spin_lock_init(&srRingBuff->lock);
 
+    return 0;
+}
+
+int nxp_simtemp_rb_init(struct nxp_simtemp_dev *sdev, u32 u32size, bool boDropOldest)
+{
+    struct simtemp_ringbuffer *sRingBuff = &sdev->stRingBuff;
+
+    /*Size validation for ring buffer implementation*/
+    if(u32size < 2)
+    {
+        return -EINVAL;
+    }
+
+    sRingBuff->stBuffer = devm_kcalloc(sdev->dev, u32size,sizeof(*sRingBuff->stBuffer), GFP_KERNEL);
+    if(NULL == sRingBuff->stBuffer)
+    {
+        return -ENOMEM;
+    }
+    /*Init the spin_lock*/
+    spin_lock_init(&sRingBuff->lock);
+    sRingBuff->u32BufferSize = u32size;
+    sRingBuff->u32head = 0;
+    sRingBuff->u32tail = 0;
+    sRingBuff->u32OverRuns = 0;
+    sRingBuff->boDropOldest = boDropOldest;
     return 0;
 }
 

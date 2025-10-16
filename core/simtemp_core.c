@@ -426,17 +426,18 @@ static int nxp_simtemp_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	/* 2. Initialize the device context */
+	sdev->dev = &pdev->dev;
 	sdev->state = SIMTEMP_enSTATE_STOP;
 	sdev->mode = SIMTEMP_MODE_CONTINUOUS; /* Default, will be overwritten by DT */
 	sdev->u32Period_ms = 1000;           /* Default, will be overwritten by DT */
 	sdev->u64SequenceNumber = 0;
-	sdev->dev = &pdev->dev;
+	
 
 	/* 3. Parse the Device Tree */
 	nxp_simtemp_of_parse(&pdev->dev, sdev);
 
 	/* 4. Initialize driver components */
-	ret = nxp_simtemp_ringbuffer_alloc(&sdev->stRingBuff, SIMTEMP_DEFAULT_RING_SIZE, true);
+	ret = nxp_simtemp_rb_init(sdev, SIMTEMP_DEFAULT_RING_SIZE, true);
 	if (ret)
 		return ret;
 
