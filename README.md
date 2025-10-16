@@ -50,12 +50,12 @@ sudo apt install build-essential linux-headers-$(uname -r) libelf-dev dkms
 ## How to Use the Driver
 
 ### 1. Loading and Unloading the Module
-*    **Load dtoverlay**
-        ```bash
-        sudo cp simtemp.dtbo /boot/overlays/
-        sudo dtoverlay simtemp
-        ```
-    
+*   **Load the Device Tree overlay:**
+    ```bash
+    sudo cp simtemp.dtbo /boot/overlays/
+    sudo dtoverlay simtemp
+    ```
+
 *   **Load the driver into the kernel:**
     ```bash
     sudo insmod simtemp.ko
@@ -71,35 +71,37 @@ sudo apt install build-essential linux-headers-$(uname -r) libelf-dev dkms
     sudo rmmod nxp_simtemp
     ```
 
-### 2. Device Tree Overlay (Crucial para la Carga)
+### 2. Device Tree Overlay (Required for Probe)
 
-Este es un `platform_driver`, lo que significa que necesita que un `platform_device` sea declarado en el Device Tree para que la función `probe` sea llamada.
+This driver is a `platform_driver`, so a matching `platform_device` must exist in the Device Tree for the `probe` routine to run.
 
-1.  **Crea el fichero de overlay `nxp-simtemp-overlay.dts`:**
+1.  **Create the overlay file `nxp-simtemp-overlay.dts`:**
     ```dts
     /dts-v1/;
     /plugin/;
 
     / {
-        compatible = "brcm,bcm2835"; // Específico para Raspberry Pi
+        compatible = "brcm,bcm2835"; // Raspberry Pi specific
 
         fragment@0 {
             target-path = "/";
             __overlay__ {
-                simtemp: simtemp@0 {
+                simtemp: simtemp {
                     compatible = "nxp,simtemp";
                     status = "okay";
+                    sampling-ms = <500>;
+                    threshold-mC = <45000>;
                 };
             };
         };
     };
     ```
 
-2.  **Compila e instala el overlay:**
+2.  **Compile and install the overlay:**
     ```bash
     dtc -@ -I dts -O dtb -o nxp-simtemp.dtbo nxp-simtemp-overlay.dts
     sudo cp nxp-simtemp.dtbo /boot/overlays/
-    sudo dtoverlay nxp-simtemp
+    sudo dtoverlay simtemp
     ```
 
 ### 2. Sysfs Interface (Configuration)
@@ -110,25 +112,25 @@ The driver exposes its parameters via files in `/sys/class/misc/nxp_simtemp/`. U
     ```bash
     cat /sys/class/misc/nxp_simtemp/state
     ```
-*   **Set Operation Mode ("continuous" or "one-shot"):**
+*   **Set the operation mode ("continuous" or "one-shot"):**
     ```bash
     echo "one-shot" | sudo tee /sys/class/misc/nxp_simtemp/operation_mode
     ```
-    o, para volver al modo por defecto:
+    or return to the default mode:
     ```bash
     echo "continuous" | sudo tee /sys/class/misc/nxp_simtemp/operation_mode
-   ```
+    ```
 
 *   **Start the sampler:**
     ```bash
-        echo RUN | sudo tee /sys/class/misc/nxp_simtemp/state
+    echo RUN | sudo tee /sys/class/misc/nxp_simtemp/state
     ```
 
 
-*  **Stop the sampler:**
+*   **Stop the sampler:**
     ```bash
     echo STOP | sudo tee /sys/class/misc/nxp_simtemp/state
-   ```
+    ```
 
 
 *   **Change sampling period to 200ms (must be stopped first):**
@@ -147,19 +149,21 @@ The driver exposes its parameters via files in `/sys/class/misc/nxp_simtemp/`. U
     ```bash
     cat /sys/class/misc/nxp_simtemp/stats
     ```
+    The output includes total samples, buffer overruns, number of threshold alerts,
+    and whether an alert or overflow is currently pending (1 = yes, 0 = no).
 
 *   **Configure the temperature threshold:**
     ```bash
     echo STOP | sudo tee /sys/class/misc/nxp_simtemp/state
     echo 28000 | sudo tee /sys/class/misc/nxp_simtemp/threshold_mC
-    echo ramp | sudo tee /sys/class/misc/nxp_simtemp/mode   # genera un incremento lineal
+    echo ramp | sudo tee /sys/class/misc/nxp_simtemp/mode   # generate a linear ramp
     echo RUN  | sudo tee /sys/class/misc/nxp_simtemp/state
     ```
-    Luego, lee algunas muestras y verifica el campo `flags`; cuando la temperatura supere el umbral verás el bit de alerta activo:
+    Read a few samples and inspect the `flags` field; when the temperature exceeds the threshold the alert bit becomes active:
     ```bash
     sudo dd if=/dev/nxp_simtemp bs=16 count=4 2>/dev/null | hexdump -e '1/8 "%016x " " " 1/4 "%08x " "\n"'
     ```
-    Para confirmar el valor actual del umbral:
+    To confirm the current threshold value:
     ```bash
     cat /sys/class/misc/nxp_simtemp/threshold_mC
     ```

@@ -294,10 +294,13 @@ static ssize_t stats_show(struct device *dev, struct device_attribute *attr, cha
 	if (!sd)
 		return -ENODEV;
 
-	return sysfs_emit(buf, "samples=%llu overruns=%u alerts=%u\n",
+	return sysfs_emit(buf, "samples=%llu overruns=%u alerts=%u alert_pending=%u overflow_pending=%u threshold_mC=%d\n",
 			  sd->u64SequenceNumber,
 			  sd->stRingBuff.u32OverRuns,
-			  sd->u32Alerts);
+			  sd->u32Alerts,
+			  sd->boAlertPending ? 1 : 0,
+			  sd->boOverflowFlag ? 1 : 0,
+			  sd->s32Threshold_mC);
 }
 static DEVICE_ATTR_RO(stats);
 
@@ -341,6 +344,18 @@ static enum hrtimer_restart nxp_simtemp_timer_cb(struct hrtimer *timer)
     
     sample.flags = SIMTEMP_FLAG_OK;
     dev->u64SequenceNumber++;
+
+    if (sample.temp_mC >= dev->s32Threshold_mC) {
+        sample.flags |= SIMTEMP_FLAG_THR_EDGE;
+        if (!dev->boAlertPending)
+            dev->u32Alerts++;
+        dev->boAlertPending = true;
+    }
+
+    if (nxp_simtemp_ringbuffer_level(&dev->stRingBuff) >= dev->stRingBuff.u32BufferSize) {
+        sample.flags |= SIMTEMP_FLAG_OVERFLOW;
+        dev->boOverflowFlag = true;
+    }
 
     /* If one-shot, flag the sample and do not re-arm the timer */
     if (dev->mode == SIMTEMP_MODE_ONESHOT) {
@@ -413,23 +428,51 @@ static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t coun
      */
     if (samples_to_read == 1) {
         struct simtemp_sample_v1 sample;
+		bool alert_seen = false;
+		bool overflow_seen = false;
 
         samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, &sample, 1);
-        if (samples_read > 0 && copy_to_user(buf, &sample, sizeof(sample)))
-            return -EFAULT;
+        if (samples_read > 0) {
+			if (sample.flags & SIMTEMP_FLAG_THR_EDGE)
+				alert_seen = true;
+			if (sample.flags & SIMTEMP_FLAG_OVERFLOW)
+				overflow_seen = true;
+			if (copy_to_user(buf, &sample, sizeof(sample)))
+				return -EFAULT;
+		}
+
+		if (alert_seen)
+			device->boAlertPending = false;
+		if (overflow_seen)
+			device->boOverflowFlag = false;
     } else {
         struct simtemp_sample_v1 *tmp_buf;
+        bool alert_seen = false;
+        bool overflow_seen = false;
 
         tmp_buf = kcalloc(samples_to_read, sizeof(*tmp_buf), GFP_KERNEL);
         if (!tmp_buf)
             return -ENOMEM;
 
         samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, tmp_buf, samples_to_read);
-        if (samples_read > 0 && copy_to_user(buf, tmp_buf, samples_read * sizeof(*tmp_buf))) {
-            kfree(tmp_buf);
-            return -EFAULT;
-        }
+        if (samples_read > 0) {
+			for (u32 i = 0; i < samples_read; i++) {
+				if (tmp_buf[i].flags & SIMTEMP_FLAG_THR_EDGE)
+					alert_seen = true;
+				if (tmp_buf[i].flags & SIMTEMP_FLAG_OVERFLOW)
+					overflow_seen = true;
+			}
+			if (copy_to_user(buf, tmp_buf, samples_read * sizeof(*tmp_buf))) {
+				kfree(tmp_buf);
+				return -EFAULT;
+			}
+		}
         kfree(tmp_buf);
+
+		if (alert_seen)
+			device->boAlertPending = false;
+		if (overflow_seen)
+			device->boOverflowFlag = false;
     }
 
     return samples_read * sizeof(struct simtemp_sample_v1);
@@ -444,6 +487,9 @@ static __poll_t nxp_simtemp_poll(struct file *file, poll_table *wait)
 
     if (!nxp_simtemp_ringbuffer_empty(&dev->stRingBuff))
         mask |= POLLIN | POLLRDNORM; /* Data is available for reading */
+
+    if (dev->boAlertPending)
+        mask |= POLLPRI;
 
     /* If in one-shot mode and the sampler has stopped, it means the single
      * sample was produced and the "stream" is finished. */
