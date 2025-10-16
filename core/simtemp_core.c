@@ -312,18 +312,17 @@ static int nxp_simtemp_release(struct inode *inode, struct file *file)
 static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
     struct nxp_simtemp_dev *device = file->private_data;
-    struct simtemp_sample_v1 sample;
-	size_t bytes_read = 0;
     u32 samples_to_read, samples_read;
     int ret;
 
     if ((file->f_flags & O_NONBLOCK) && nxp_simtemp_ringbuffer_empty(&device->stRingBuff))
         return -EAGAIN;
 
-    /* Blocking wait until data is available in the ring buffer */
-    ret = wait_event_interruptible(device->read_wait, !nxp_simtemp_ringbuffer_empty(&device->stRingBuff));
+    /* Blocking wait until data is available or a signal is received */
+    ret = wait_event_interruptible(device->read_wait,
+                       !nxp_simtemp_ringbuffer_empty(&device->stRingBuff));
     if (ret)
-        return ret; /* Interrupted by a signal */
+        return ret;
 
     /* Calculate how many samples fit in the user buffer */
     samples_to_read = count / sizeof(struct simtemp_sample_v1);
@@ -331,20 +330,31 @@ static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t coun
         return -EINVAL; /* User buffer is too small for even one sample */
 
     /*
-     * To avoid large kernel allocations, read one sample at a time
-     * and copy it to the user. This is safer.
+     * OPTIMIZATION: For small reads (like one-shot), use a stack variable
+     * to avoid the overhead of kcalloc/kfree.
      */
-    while (bytes_read + sizeof(struct simtemp_sample_v1) <= count) {
+    if (samples_to_read == 1) {
+        struct simtemp_sample_v1 sample;
+
         samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, &sample, 1);
-        if (samples_read == 0)
-            break; /* No more data */
-
-        if (copy_to_user(buf + bytes_read, &sample, sizeof(sample)))
+        if (samples_read > 0 && copy_to_user(buf, &sample, sizeof(sample)))
             return -EFAULT;
+    } else {
+        struct simtemp_sample_v1 *tmp_buf;
 
-        bytes_read += sizeof(sample);
+        tmp_buf = kcalloc(samples_to_read, sizeof(*tmp_buf), GFP_KERNEL);
+        if (!tmp_buf)
+            return -ENOMEM;
+
+        samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, tmp_buf, samples_to_read);
+        if (samples_read > 0 && copy_to_user(buf, tmp_buf, samples_read * sizeof(*tmp_buf))) {
+            kfree(tmp_buf);
+            return -EFAULT;
+        }
+        kfree(tmp_buf);
     }
-    return bytes_read;
+
+    return samples_read * sizeof(struct simtemp_sample_v1);
 }
 
 static __poll_t nxp_simtemp_poll(struct file *file, poll_table *wait)
