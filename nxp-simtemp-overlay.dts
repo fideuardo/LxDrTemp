@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "brcm,bcm2835";
+
+    fragment@0 {
+        target-path = "/";
+        __overlay__ {
+            simtemp: simtemp@0 {
+                compatible = "nxp,simtemp";
+                status = "okay";
+                sampling-ms = <500>; /* Opcional: período inicial de 500ms */
+            };
+        };
+    };
+};

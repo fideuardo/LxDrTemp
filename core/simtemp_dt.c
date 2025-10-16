@@ -38,8 +38,14 @@ int nxp_simtemp_of_parse(struct device *dev, struct nxp_simtemp_dev *sdev)
 	ret = of_property_read_u32(np, "sampling-ms", &period_ms);
 	if (ret == 0) {
 		/* Validar período (MSD: 5-5000ms) */
-		sdev->u32Period_ms = period_ms;
-		dev_info(dev, "DT: Set sampling period to %u ms\n", sdev->u32Period_ms);
+		if (period_ms >= 5 && period_ms <= 5000) {
+			sdev->u32Period_ms = period_ms;
+			dev_info(dev, "DT: Set sampling period to %u ms\n", sdev->u32Period_ms);
+		} else {
+			dev_warn(dev, "DT: sampling-ms=%u is out of range [5, 5000]. Using default %u ms.\n",
+				 period_ms, sdev->u32Period_ms);
+		}
+
 	}
 
 	/* Leer el modo de operación (ahora 'mode' con 'normal', 'noisy', 'ramp') */

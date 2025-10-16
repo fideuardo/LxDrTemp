@@ -6,6 +6,9 @@
 #include <linux/spinlock.h>
 #include <uapi/simtemp_uapi.h>
 
+/* Forward declaration to avoid implicit declaration warnings and circular includes. */
+struct nxp_simtemp_dev;
+
 /**
  * struct simtemp_ringbuffer - Ring buffer for temperature samples.
  * @stBuffer: Pointer to the sample array that makes up the buffer.
@@ -32,11 +35,10 @@ struct simtemp_ringbuffer{
 	bool boDropOldest;
 };
 
-int  nxp_simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff, u32 u32BufferSize, bool boDropOldest);
-void nxp_simtemp_ringbuffer_free(struct simtemp_ringbuffer *srRingBuff);
 bool nxp_simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample);
 u32  nxp_simtemp_ringbuffer_read(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample, u32 u32Count);
 bool nxp_simtemp_ringbuffer_empty(struct simtemp_ringbuffer *srRingBuff);
 u32  nxp_simtemp_ringbuffer_level(struct simtemp_ringbuffer *srRingBuff);
+int nxp_simtemp_rb_init(struct nxp_simtemp_dev *sdev, u32 u32size, bool boDropOldest);
 
 #endif /* _SIMTEMP_RINGBUF_H_ */

@@ -8,9 +8,14 @@
 
 void print_usage(const char *prog_name) {
     fprintf(stderr, "Usage: %s <device> <command>\n", prog_name);
-    fprintf(stderr, "Commands:\n");
-    fprintf(stderr, "  start    - Start the sampler\n");
-    fprintf(stderr, "  stop     - Stop the sampler\n");
+    fprintf(stderr, "\nCommands:\n");
+    fprintf(stderr, "  start          - Start the sampler\n");
+    fprintf(stderr, "  stop           - Stop the sampler\n");
+    fprintf(stderr, "  read <N>       - Read N samples (blocking)\n");
+    fprintf(stderr, "  get_mode       - Get current operation mode\n");
+    fprintf(stderr, "  set_mode <0|1> - Set mode (0=ONESHOT, 1=CONTINUOUS)\n");
+    fprintf(stderr, "  get_period     - Get sampling period in ms\n");
+    fprintf(stderr, "  set_period <ms> - Set sampling period in ms\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -21,31 +26,77 @@ int main(int argc, char *argv[]) {
 
     const char *device_path = argv[1];
     const char *command_str = argv[2];
-    unsigned int cmd;
-
-    if (strcmp(command_str, "start") == 0) {
-        cmd = SIMTEMP_IOC_START;
-    } else if (strcmp(command_str, "stop") == 0) {
-        cmd = SIMTEMP_IOC_STOP;
-    } else {
-        fprintf(stderr, "Error: Unknown command '%s'\n", command_str);
-        print_usage(argv[0]);
-        return 1;
-    }
 
     int fd = open(device_path, O_RDWR);
     if (fd < 0) {
         perror("Error opening device");
         return 1;
     }
+    
+    int ret = 0;
 
-    if (ioctl(fd, cmd, NULL) < 0) {
-        perror("ioctl failed");
-        close(fd);
-        return 1;
+    if (strcmp(command_str, "start") == 0) {
+        ret = ioctl(fd, SIMTEMP_IOC_START);
+        if (ret == 0) printf("Sampler started.\n");
+    } else if (strcmp(command_str, "stop") == 0) {
+        ret = ioctl(fd, SIMTEMP_IOC_STOP);
+        if (ret == 0) printf("Sampler stopped.\n");
+    } else if (strcmp(command_str, "read") == 0) {
+        if (argc != 4) { print_usage(argv[0]); ret = -1; goto out; }
+        int num_samples = atoi(argv[3]);
+        if (num_samples <= 0) { print_usage(argv[0]); ret = -1; goto out; }
+        
+        struct simtemp_sample_v1 *samples = malloc(num_samples * sizeof(*samples));
+        if (!samples) { perror("malloc"); ret = -1; goto out; }
+
+        printf("Reading up to %d samples...\n", num_samples);
+        ssize_t bytes_read = read(fd, samples, num_samples * sizeof(*samples));
+        if (bytes_read < 0) {
+            perror("read failed");
+            free(samples);
+            ret = -1;
+            goto out;
+        }
+        
+        int samples_read = bytes_read / sizeof(struct simtemp_sample_v1);
+        printf("Read %d samples:\n", samples_read);
+        for (int i = 0; i < samples_read; i++) {
+            printf("  - T: %.3f C, TS: %llu, Flags: 0x%X\n",
+                   (double)samples[i].temp_mC / 1000.0,
+                   samples[i].timestamp_ns,
+                   samples[i].flags);
+        }
+        free(samples);
+
+    } else if (strcmp(command_str, "get_mode") == 0) {
+        __u32 mode;
+        ret = ioctl(fd, SIMTEMP_IOC_GET_MODE, &mode);
+        if (ret == 0) printf("Current mode: %s\n", mode == 0 ? "one-shot" : "continuous");
+    } else if (strcmp(command_str, "set_mode") == 0) {
+        if (argc != 4) { print_usage(argv[0]); ret = -1; goto out; }
+        __u32 mode = atoi(argv[3]);
+        ret = ioctl(fd, SIMTEMP_IOC_SET_MODE, &mode);
+        if (ret == 0) printf("Mode set successfully.\n");
+    } else if (strcmp(command_str, "get_period") == 0) {
+        __u32 period;
+        ret = ioctl(fd, SIMTEMP_IOC_GET_PERIOD, &period);
+        if (ret == 0) printf("Current period: %u ms\n", period);
+    } else if (strcmp(command_str, "set_period") == 0) {
+        if (argc != 4) { print_usage(argv[0]); ret = -1; goto out; }
+        __u32 period = atoi(argv[3]);
+        ret = ioctl(fd, SIMTEMP_IOC_SET_PERIOD, &period);
+        if (ret == 0) printf("Period set successfully.\n");
+    } else {
+        fprintf(stderr, "Error: Unknown command '%s'\n", command_str);
+        print_usage(argv[0]);
+        ret = -1;
     }
 
-    printf("ioctl command '%s' sent successfully to %s.\n", command_str, device_path);
+    if (ret < 0) {
+        perror("Operation failed");
+    }
+
+out:
     close(fd);
-    return 0;
+    return ret < 0 ? 1 : 0;
 }
