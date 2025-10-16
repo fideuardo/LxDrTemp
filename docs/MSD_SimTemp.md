@@ -179,7 +179,7 @@ struct simtemp_cfg { __u32 sampling_ms; __s32 threshold_mC; __u32 mode; };
 - `sampling_ms` (RW, 5..5000) — sampling period in ms.  
 - `threshold_mC` (RW, int) — threshold in m°C.  
 - `mode` (RW: `normal|noisy|ramp`) — simulation waveform.  
-- `stats` (RO) — `samples=<u64> alerts=<u64> shortreads=<u64> last_err=<u64>`.
+- `stats` (RO) — `samples=<u64> overruns=<u32> alerts=<u32> alert_pending=<0|1> overflow_pending=<0|1> threshold_mC=<s32>`.
 
 ### 5.4 Poll/Epoll Semantics
 - `POLLIN | POLLRDNORM`: new sample(s) available.  
