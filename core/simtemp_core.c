@@ -453,11 +453,12 @@ static __poll_t nxp_simtemp_poll(struct file *file, poll_table *wait)
 static long nxp_simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     struct nxp_simtemp_dev *dev = file->private_data;
-    u32 tmp;    
+	u32 tmp;    
+	s32 threshold;
 
-    switch (cmd) {
-    case SIMTEMP_IOC_START:
-        return nxp_simtemp_start_sampler(dev);
+	switch (cmd) {
+	case SIMTEMP_IOC_START:
+		return nxp_simtemp_start_sampler(dev);
 
     case SIMTEMP_IOC_STOP:
         return nxp_simtemp_stop_sampler(dev);
@@ -482,22 +483,35 @@ static long nxp_simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long
         if (copy_to_user((void __user *)arg, &tmp, sizeof(tmp)))
             return -EFAULT;
         return 0;
-    case SIMTEMP_IOC_SET_PERIOD:
-        if (copy_from_user(&tmp, (void __user *)arg, sizeof(tmp)))
-            return -EFAULT;
-        /* Period cannot be 0 */
-        if (tmp == 0)
-            return -EINVAL;
+	case SIMTEMP_IOC_SET_PERIOD:
+		if (copy_from_user(&tmp, (void __user *)arg, sizeof(tmp)))
+			return -EFAULT;
+		/* Period cannot be 0 */
+		if (tmp == 0)
+			return -EINVAL;
 
-        /* UC-03: Reject period change if running */
-        if (dev->state == SIMTEMP_enSTATE_RUN)
-            return -EBUSY;
+		/* UC-03: Reject period change if running */
+		if (dev->state == SIMTEMP_enSTATE_RUN)
+			return -EBUSY;
 
-        dev->u32Period_ms = tmp;
-        return 0;
-    default:
-        return -ENOTTY;
-    }
+		dev->u32Period_ms = tmp;
+		return 0;
+	case SIMTEMP_IOC_GET_THRESHOLD:
+		threshold = dev->s32Threshold_mC;
+		if (copy_to_user((void __user *)arg, &threshold, sizeof(threshold)))
+			return -EFAULT;
+		return 0;
+	case SIMTEMP_IOC_SET_THRESHOLD:
+		if (copy_from_user(&threshold, (void __user *)arg, sizeof(threshold)))
+			return -EFAULT;
+		if (threshold < 0 || threshold > 150000)
+			return -EINVAL;
+		dev->s32Threshold_mC = threshold;
+		dev->boAlertPending = false;
+		return 0;
+	default:
+		return -ENOTTY;
+	}
 }
 
 /* --- Platform Driver Implementation --- */
