@@ -4,6 +4,7 @@
 #define _NXP_SIMTEMP_H_
 
 /* Kernel includes */
+#include <linux/miscdevice.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/hrtimer.h>
@@ -44,6 +45,7 @@ enum nxp_simtemp_sim_mode {
 /* Main driver context structure */
 struct nxp_simtemp_dev {
 	struct device *dev;
+	struct miscdevice miscdev;
 	enum nxp_simtemp_state state;
 	enum nxp_simtemp_mode mode;
 	enum nxp_simtemp_sim_mode sim_mode;
