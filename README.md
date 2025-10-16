@@ -53,7 +53,7 @@ sudo apt install build-essential linux-headers-$(uname -r) libelf-dev dkms
 *    **Load dtoverlay**
         ```bash
         sudo cp simtemp.dtbo /boot/overlays/
-        sudo dtoverlay nxp-simtemp
+        sudo dtoverlay simtemp
         ```
     
 *   **Load the driver into the kernel:**
