@@ -58,7 +58,7 @@ sudo apt install build-essential linux-headers-$(uname -r) libelf-dev dkms
     
 *   **Load the driver into the kernel:**
     ```bash
-    sudo insmod nxp_simtemp.ko
+    sudo insmod simtemp.ko
     ```
 
 *   **Verify that the device was created:**
@@ -123,7 +123,9 @@ The driver exposes its parameters via files in `/sys/class/misc/nxp_simtemp/`. U
     ```bash
         echo RUN | sudo tee /sys/class/misc/nxp_simtemp/state
     ```
-    **Stop the sampler:**
+
+
+*  **Stop the sampler:**
     ```bash
     echo STOP | sudo tee /sys/class/misc/nxp_simtemp/state
    ```

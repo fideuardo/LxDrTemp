@@ -393,8 +393,12 @@ static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t coun
         return -EAGAIN;
 
     /* Blocking wait until data is available or a signal is received */
-    ret = wait_event_interruptible(device->read_wait,
-                       !nxp_simtemp_ringbuffer_empty(&device->stRingBuff));
+    ret = wait_event_interruptible(
+		device->read_wait,
+		!nxp_simtemp_ringbuffer_empty(&device->stRingBuff) ||
+		(device->mode == SIMTEMP_MODE_ONESHOT &&
+		 device->state == SIMTEMP_enSTATE_STOP)
+	);
     if (ret)
         return ret;
 
