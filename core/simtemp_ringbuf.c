@@ -2,70 +2,41 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 
-
 /*own includes*/
 #include "nxp_simtemp.h"
 
 /*--------------------------------------------------------------------------------------------------------*/
-/*int  simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff     -> Ring Buffer structure        */
-/*                                                      u32 u32BufferSize -> Buffer Size                  */ 
-/*                                                      bool boDropOldest -> Overwritting is enable       */
+/*int  nxp_simtemp_rb_init(struct nxp_simtemp_dev *sdev -> Main device context                           */
+/*                         u32 u32size              -> Buffer Size                                     */
+/*                         bool boDropOldest         -> Overwritting is enable                          */
 /*  Return:      0 -> Buffer was initialized properly                                                     */
 /*         -EINVAL -> Invalid Argument                                                                    */
 /*         -ENOMEM -> Out of memory                                                                       */
 /*--------------------------------------------------------------------------------------------------------*/
-int nxp_simtemp_ringbuffer_alloc(struct simtemp_ringbuffer *srRingBuff, u32 u32BufferSize, bool boDropOldest)
-{
-    /*Size validation for ring buffer implementation*/
-    if(0 == u32BufferSize )
-    {
-        return -EINVAL;
-    }
-    /* Assigning memory address. FIX: Typo en el nombre de la estructura */
-    srRingBuff->stBuffer = kmalloc_array(u32BufferSize, sizeof(struct simtemp_sample_v1), GFP_KERNEL | __GFP_ZERO);
-    
-    /* Validate if memory block was assigned */
-    if(NULL == srRingBuff->stBuffer)
-    {
-        return -ENOMEM;
-    }
-
-    /*Adding functional parameters*/
-
-    srRingBuff->u32BufferSize = u32BufferSize;
-    srRingBuff->u32head = 0;
-    srRingBuff->u32tail = 0;
-    srRingBuff->u32OverRuns = 0;
-    srRingBuff->boDropOldest = boDropOldest;
-    /*Init the spin_lock*/
-    spin_lock_init(&srRingBuff->lock);
-
-    return 0;
-}
-
 int nxp_simtemp_rb_init(struct nxp_simtemp_dev *sdev, u32 u32size, bool boDropOldest)
 {
-    struct simtemp_ringbuffer *sRingBuff = &sdev->stRingBuff;
+	struct simtemp_ringbuffer *sRingBuff = &sdev->stRingBuff;
 
-    /*Size validation for ring buffer implementation*/
-    if(u32size < 2)
-    {
-        return -EINVAL;
-    }
+	/* Size validation for ring buffer implementation */
+	if (u32size < 2)
+		return -EINVAL;
 
-    sRingBuff->stBuffer = devm_kcalloc(sdev->dev, u32size,sizeof(*sRingBuff->stBuffer), GFP_KERNEL);
-    if(NULL == sRingBuff->stBuffer)
-    {
-        return -ENOMEM;
-    }
-    /*Init the spin_lock*/
-    spin_lock_init(&sRingBuff->lock);
-    sRingBuff->u32BufferSize = u32size;
-    sRingBuff->u32head = 0;
-    sRingBuff->u32tail = 0;
-    sRingBuff->u32OverRuns = 0;
-    sRingBuff->boDropOldest = boDropOldest;
-    return 0;
+	/*
+	 * Allocate the buffer using device-managed memory. The kernel will
+	 * automatically free this when the driver is removed.
+	 */
+	sRingBuff->stBuffer = devm_kcalloc(sdev->dev, u32size, sizeof(*sRingBuff->stBuffer), GFP_KERNEL);
+	if (!sRingBuff->stBuffer)
+		return -ENOMEM;
+
+	/* Init the spin_lock and other parameters */
+	spin_lock_init(&sRingBuff->lock);
+	sRingBuff->u32BufferSize = u32size;
+	sRingBuff->u32head = 0;
+	sRingBuff->u32tail = 0;
+	sRingBuff->u32OverRuns = 0;
+	sRingBuff->boDropOldest = boDropOldest;
+	return 0;
 }
 
 void nxp_simtemp_ringbuffer_free(struct simtemp_ringbuffer *srRingBuff)

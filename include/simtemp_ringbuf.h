@@ -6,6 +6,9 @@
 #include <linux/spinlock.h>
 #include <uapi/simtemp_uapi.h>
 
+/* Forward declaration to avoid implicit declaration warnings and circular includes. */
+struct nxp_simtemp_dev;
+
 /**
  * struct simtemp_ringbuffer - Ring buffer for temperature samples.
  * @stBuffer: Pointer to the sample array that makes up the buffer.

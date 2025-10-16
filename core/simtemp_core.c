@@ -449,7 +449,6 @@ static int nxp_simtemp_probe(struct platform_device *pdev)
 	ret = misc_register(&nxp_simtemp_miscdev);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to register misc device\n");
-		nxp_simtemp_ringbuffer_free(&sdev->stRingBuff);
 		return ret;
 	}
 	/*
@@ -464,7 +463,6 @@ static int nxp_simtemp_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to create sysfs files\n");
 		misc_deregister(&nxp_simtemp_miscdev);
-		nxp_simtemp_ringbuffer_free(&sdev->stRingBuff);
 		return ret;
 	}
 
@@ -483,7 +481,11 @@ static void nxp_simtemp_remove(struct platform_device *pdev)
 	hrtimer_cancel(&sdev->timer);
 	sysfs_remove_groups(&nxp_simtemp_miscdev.this_device->kobj, nxp_simtemp_groups);
 	misc_deregister(&nxp_simtemp_miscdev);
-	nxp_simtemp_ringbuffer_free(&sdev->stRingBuff);
+	/*
+	 * No need to call nxp_simtemp_ringbuffer_free(). The memory for the ring buffer
+	 * and for sdev itself was allocated with devm_* functions, so the kernel
+	 * handles the cleanup automatically.
+	 */
 
 	pr_info("nxp_simtemp: unloaded\n");
 }
