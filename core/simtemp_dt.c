@@ -26,6 +26,7 @@ int nxp_simtemp_of_parse(struct device *dev, struct nxp_simtemp_dev *sdev)
 	struct device_node *np = dev->of_node;
 	const char *mode_str;
 	u32 period_ms;
+	s32 threshold_mc;
 	int ret;
 
 	/* Si no hay nodo de DT, no es un error. Se usarán los defaults. */
@@ -46,6 +47,18 @@ int nxp_simtemp_of_parse(struct device *dev, struct nxp_simtemp_dev *sdev)
 				 period_ms, sdev->u32Period_ms);
 		}
 
+	}
+
+	/* Leer el umbral de temperatura en miligrados Celsius */
+	ret = of_property_read_s32(np, "threshold-mC", &threshold_mc);
+	if (ret == 0) {
+		if (threshold_mc >= 0 && threshold_mc <= 150000) {
+			sdev->s32Threshold_mC = threshold_mc;
+			dev_info(dev, "DT: Set threshold to %d mC\n", sdev->s32Threshold_mC);
+		} else {
+			dev_warn(dev, "DT: threshold-mC=%d out of range [0, 150000]. Using default %d mC.\n",
+				 threshold_mc, sdev->s32Threshold_mC);
+		}
 	}
 
 	/* Leer el modo de operación (ahora 'mode' con 'normal', 'noisy', 'ramp') */
