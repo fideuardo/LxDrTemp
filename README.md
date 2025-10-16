@@ -121,7 +121,7 @@ The driver exposes its parameters via files in `/sys/class/misc/nxp_simtemp/`. U
 
 *   **Start the sampler:**
     ```bash
-    echo RUN | sudo tee /sys/class/misc/nxp_simtemp/state
+        echo RUN | sudo tee /sys/class/misc/nxp_simtemp/state
     ```
     **Stop the sampler:**
     ```bash
