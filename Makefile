@@ -19,7 +19,7 @@ simtemp-objs := core/simtemp_core.o core/simtemp_dt.o core/simtemp_ringbuf.o
 ccflags-y += -I$(src)/include
 
 all:
-	dtc -@ -I dts -O dtb -o simtemp.dtbo simtemp-overlay.dts
+	dtc -@ -I dts -O dtb -o simtemp.dtbo nxp-simtemp-overlay.dts
 	$(MAKE) -C $(KDIR) M=$(CURDIR) modules
 
 clean:

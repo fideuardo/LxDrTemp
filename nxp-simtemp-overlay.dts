@@ -8,10 +8,12 @@
     fragment@0 {
         target-path = "/";
         __overlay__ {
-            simtemp: simtemp@0 {
+            simtemp: simtemp {
                 compatible = "nxp,simtemp";
                 status = "okay";
-                sampling-ms = <500>; /* Opcional: período inicial de 500ms */
+                sampling-ms = <500>;      /* Período inicial de 500 ms */
+                threshold-mC = <45000>;    /* Umbral por defecto en miligrados Celsius */
+                operation-mode = "continuous"; /* Modo legacy opcional */
             };
         };
     };

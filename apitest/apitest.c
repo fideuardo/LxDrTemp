@@ -6,20 +6,22 @@
 #include <sys/ioctl.h>
 #include "../include/uapi/simtemp_uapi.h" // Incluye las definiciones de tu driver
 
-void print_usage(const char *prog_name) {
-    fprintf(stderr, "Usage: %s <device> <command>\n", prog_name);
+static void print_usage(const char *prog_name) {
+    fprintf(stderr, "Usage: %s <device> <command> [args]\n", prog_name);
     fprintf(stderr, "\nCommands:\n");
-    fprintf(stderr, "  start          - Start the sampler\n");
-    fprintf(stderr, "  stop           - Stop the sampler\n");
-    fprintf(stderr, "  read <N>       - Read N samples (blocking)\n");
-    fprintf(stderr, "  get_mode       - Get current operation mode\n");
-    fprintf(stderr, "  set_mode <0|1> - Set mode (0=ONESHOT, 1=CONTINUOUS)\n");
-    fprintf(stderr, "  get_period     - Get sampling period in ms\n");
-    fprintf(stderr, "  set_period <ms> - Set sampling period in ms\n");
+    fprintf(stderr, "  start                    - Start the sampler\n");
+    fprintf(stderr, "  stop                     - Stop the sampler\n");
+    fprintf(stderr, "  read <N>                 - Read N samples (blocking)\n");
+    fprintf(stderr, "  get_mode                 - Get current operation mode\n");
+    fprintf(stderr, "  set_mode <0|1>           - Set mode (0=ONESHOT, 1=CONTINUOUS)\n");
+    fprintf(stderr, "  get_period               - Get sampling period in ms\n");
+    fprintf(stderr, "  set_period <ms>          - Set sampling period in ms\n");
+    fprintf(stderr, "  get_threshold            - Get threshold in milli-Celsius\n");
+    fprintf(stderr, "  set_threshold <mC>       - Set threshold in milli-Celsius (0-150000)\n");
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 3) {
+    if (argc < 3) {
         print_usage(argv[0]);
         return 1;
     }
@@ -86,6 +88,15 @@ int main(int argc, char *argv[]) {
         __u32 period = atoi(argv[3]);
         ret = ioctl(fd, SIMTEMP_IOC_SET_PERIOD, &period);
         if (ret == 0) printf("Period set successfully.\n");
+    } else if (strcmp(command_str, "get_threshold") == 0) {
+        __s32 threshold;
+        ret = ioctl(fd, SIMTEMP_IOC_GET_THRESHOLD, &threshold);
+        if (ret == 0) printf("Current threshold: %d mC\n", threshold);
+    } else if (strcmp(command_str, "set_threshold") == 0) {
+        if (argc != 4) { print_usage(argv[0]); ret = -1; goto out; }
+        __s32 threshold = atoi(argv[3]);
+        ret = ioctl(fd, SIMTEMP_IOC_SET_THRESHOLD, &threshold);
+        if (ret == 0) printf("Threshold set successfully.\n");
     } else {
         fprintf(stderr, "Error: Unknown command '%s'\n", command_str);
         print_usage(argv[0]);

@@ -53,12 +53,12 @@ sudo apt install build-essential linux-headers-$(uname -r) libelf-dev dkms
 *    **Load dtoverlay**
         ```bash
         sudo cp simtemp.dtbo /boot/overlays/
-        sudo dtoverlay nxp-simtemp
+        sudo dtoverlay simtemp
         ```
     
 *   **Load the driver into the kernel:**
     ```bash
-    sudo insmod nxp_simtemp.ko
+    sudo insmod simtemp.ko
     ```
 
 *   **Verify that the device was created:**
@@ -123,7 +123,9 @@ The driver exposes its parameters via files in `/sys/class/misc/nxp_simtemp/`. U
     ```bash
         echo RUN | sudo tee /sys/class/misc/nxp_simtemp/state
     ```
-    **Stop the sampler:**
+
+
+*  **Stop the sampler:**
     ```bash
     echo STOP | sudo tee /sys/class/misc/nxp_simtemp/state
    ```
@@ -144,6 +146,22 @@ The driver exposes its parameters via files in `/sys/class/misc/nxp_simtemp/`. U
 *   **Check statistics:**
     ```bash
     cat /sys/class/misc/nxp_simtemp/stats
+    ```
+
+*   **Configure the temperature threshold:**
+    ```bash
+    echo STOP | sudo tee /sys/class/misc/nxp_simtemp/state
+    echo 28000 | sudo tee /sys/class/misc/nxp_simtemp/threshold_mC
+    echo ramp | sudo tee /sys/class/misc/nxp_simtemp/mode   # genera un incremento lineal
+    echo RUN  | sudo tee /sys/class/misc/nxp_simtemp/state
+    ```
+    Luego, lee algunas muestras y verifica el campo `flags`; cuando la temperatura supere el umbral verás el bit de alerta activo:
+    ```bash
+    sudo dd if=/dev/nxp_simtemp bs=16 count=4 2>/dev/null | hexdump -e '1/8 "%016x " " " 1/4 "%08x " "\n"'
+    ```
+    Para confirmar el valor actual del umbral:
+    ```bash
+    cat /sys/class/misc/nxp_simtemp/threshold_mC
     ```
 
 ### 3. Device Node (Reading Data)
@@ -177,6 +195,10 @@ The `apitest` utility provides a command-line wrapper for the `ioctl` interface.
 
     # Change the period to 500ms
     ./apitest /dev/nxp_simtemp set_period 500
+
+    # Inspect / adjust the temperature threshold
+    ./apitest /dev/nxp_simtemp get_threshold
+    ./apitest /dev/nxp_simtemp set_threshold 28000
     ```
 
 ## Project Documentation

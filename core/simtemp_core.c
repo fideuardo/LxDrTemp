@@ -208,6 +208,45 @@ static ssize_t mode_store(struct device *dev, struct device_attribute *attr, con
 static DEVICE_ATTR_RW(mode);
 
 /*
+ * show/store para 'threshold_mC'
+ * Permite leer/escribir el umbral de alerta en miligrados Celsius.
+ */
+static ssize_t threshold_mC_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct nxp_simtemp_dev *sd = dev_to_simtemp(dev);
+
+	if (!sd)
+		return -ENODEV;
+
+	return sysfs_emit(buf, "%d\n", sd->s32Threshold_mC);
+}
+
+static ssize_t threshold_mC_store(struct device *dev, struct device_attribute *attr,
+				  const char *buf, size_t count)
+{
+	struct nxp_simtemp_dev *sd = dev_to_simtemp(dev);
+	s32 new_threshold;
+	int ret;
+
+	if (!sd)
+		return -ENODEV;
+
+	ret = kstrtos32(buf, 10, &new_threshold);
+	if (ret)
+		return ret;
+
+	if (new_threshold < 0 || new_threshold > 150000)
+		return -EINVAL;
+
+	sd->s32Threshold_mC = new_threshold;
+	/* Limpiar estado de alerta pendiente cuando se cambia el umbral. */
+	sd->boAlertPending = false;
+
+	return count;
+}
+static DEVICE_ATTR_RW(threshold_mC);
+
+/*
  * show/store para 'operation_mode'
  * Allows reading/writing the operation mode: "continuous" or "one-shot".
  * Writing is only allowed if the timer is stopped.
@@ -264,13 +303,14 @@ static DEVICE_ATTR_RO(stats);
 
 /* Attribute group to be created/removed together */
 static struct attribute *nxp_simtemp_attrs[] = {
-    &dev_attr_state.attr,
-	&dev_attr_sampling_ms.attr,
-	&dev_attr_operation_mode.attr, /* Legacy, should be reviewed */
-	&dev_attr_mode.attr,
-	&dev_attr_stats.attr,
-	NULL,
-};
+	    &dev_attr_state.attr,
+		&dev_attr_sampling_ms.attr,
+		&dev_attr_operation_mode.attr, /* Legacy, should be reviewed */
+		&dev_attr_mode.attr,
+		&dev_attr_threshold_mC.attr,
+		&dev_attr_stats.attr,
+		NULL,
+	};
 ATTRIBUTE_GROUPS(nxp_simtemp);
 
 
@@ -353,8 +393,12 @@ static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t coun
         return -EAGAIN;
 
     /* Blocking wait until data is available or a signal is received */
-    ret = wait_event_interruptible(device->read_wait,
-                       !nxp_simtemp_ringbuffer_empty(&device->stRingBuff));
+    ret = wait_event_interruptible(
+		device->read_wait,
+		!nxp_simtemp_ringbuffer_empty(&device->stRingBuff) ||
+		(device->mode == SIMTEMP_MODE_ONESHOT &&
+		 device->state == SIMTEMP_enSTATE_STOP)
+	);
     if (ret)
         return ret;
 
@@ -413,11 +457,12 @@ static __poll_t nxp_simtemp_poll(struct file *file, poll_table *wait)
 static long nxp_simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     struct nxp_simtemp_dev *dev = file->private_data;
-    u32 tmp;    
+	u32 tmp;    
+	s32 threshold;
 
-    switch (cmd) {
-    case SIMTEMP_IOC_START:
-        return nxp_simtemp_start_sampler(dev);
+	switch (cmd) {
+	case SIMTEMP_IOC_START:
+		return nxp_simtemp_start_sampler(dev);
 
     case SIMTEMP_IOC_STOP:
         return nxp_simtemp_stop_sampler(dev);
@@ -442,22 +487,35 @@ static long nxp_simtemp_ioctl(struct file *file, unsigned int cmd, unsigned long
         if (copy_to_user((void __user *)arg, &tmp, sizeof(tmp)))
             return -EFAULT;
         return 0;
-    case SIMTEMP_IOC_SET_PERIOD:
-        if (copy_from_user(&tmp, (void __user *)arg, sizeof(tmp)))
-            return -EFAULT;
-        /* Period cannot be 0 */
-        if (tmp == 0)
-            return -EINVAL;
+	case SIMTEMP_IOC_SET_PERIOD:
+		if (copy_from_user(&tmp, (void __user *)arg, sizeof(tmp)))
+			return -EFAULT;
+		/* Period cannot be 0 */
+		if (tmp == 0)
+			return -EINVAL;
 
-        /* UC-03: Reject period change if running */
-        if (dev->state == SIMTEMP_enSTATE_RUN)
-            return -EBUSY;
+		/* UC-03: Reject period change if running */
+		if (dev->state == SIMTEMP_enSTATE_RUN)
+			return -EBUSY;
 
-        dev->u32Period_ms = tmp;
-        return 0;
-    default:
-        return -ENOTTY;
-    }
+		dev->u32Period_ms = tmp;
+		return 0;
+	case SIMTEMP_IOC_GET_THRESHOLD:
+		threshold = dev->s32Threshold_mC;
+		if (copy_to_user((void __user *)arg, &threshold, sizeof(threshold)))
+			return -EFAULT;
+		return 0;
+	case SIMTEMP_IOC_SET_THRESHOLD:
+		if (copy_from_user(&threshold, (void __user *)arg, sizeof(threshold)))
+			return -EFAULT;
+		if (threshold < 0 || threshold > 150000)
+			return -EINVAL;
+		dev->s32Threshold_mC = threshold;
+		dev->boAlertPending = false;
+		return 0;
+	default:
+		return -ENOTTY;
+	}
 }
 
 /* --- Platform Driver Implementation --- */
@@ -482,7 +540,11 @@ static int nxp_simtemp_probe(struct platform_device *pdev)
 	sdev->state = SIMTEMP_enSTATE_STOP;
 	sdev->mode = SIMTEMP_MODE_CONTINUOUS; /* Default, will be overwritten by DT */
 	sdev->u32Period_ms = 1000;           /* Default, will be overwritten by DT */
+	sdev->s32Threshold_mC = 45000;       /* MSD default threshold */
 	sdev->u64SequenceNumber = 0;
+	sdev->u32Alerts = 0;
+	sdev->boAlertPending = false;
+	sdev->boOverflowFlag = false;
 	sdev->dev = &pdev->dev;
 	sdev->miscdev.minor = MISC_DYNAMIC_MINOR;
 	sdev->miscdev.name = "nxp_simtemp";
