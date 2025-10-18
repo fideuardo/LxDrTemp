@@ -17,21 +17,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Cache apt packages
-        id: cache-apt
-        uses: actions/cache@v4
-        with:
-          path: |
-            /var/cache/apt/archives
-            /var/lib/apt/lists
-          key: ${{ runner.os }}-apt-cache-${{ hashFiles('**/Makefile') }}
-          restore-keys: |
-            ${{ runner.os }}-apt-cache-
-
       - name: Install Dependencies
         run: |
-          if [[ "${{ steps.cache-apt.outputs.cache-hit }}" != "true" ]]; then sudo apt-get update; fi
-          sudo apt-get install -y build-essential linux-headers-$(uname -r) device-tree-compiler
+          packages=()
+
+          if ! dpkg -s build-essential >/dev/null 2>&1; then
+            packages+=("build-essential")
+          fi
+
+          if ! dpkg -s device-tree-compiler >/dev/null 2>&1; then
+            packages+=("device-tree-compiler")
+          fi
+
+          if [ ! -e "/lib/modules/$(uname -r)/build" ]; then
+            packages+=("linux-headers-$(uname -r)")
+          fi
+
+          if [ ${#packages[@]} -gt 0 ]; then
+            echo "Installing packages: ${packages[*]}"
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends "${packages[@]}"
+          else
+            echo "Dependencies already available on the runner."
+          fi
 
       - name: Compile the driver and device tree
-        run: make
+        run: make -j"$(nproc)"
