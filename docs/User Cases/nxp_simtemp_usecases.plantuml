@@ -1,0 +1,79 @@
+@startuml UC_Global
+skinparam style strictuml
+skinparam usecase {
+  backgroundColor<<Core>> #E6F2FF
+  backgroundColor<<Data>> #E9FFE6
+  BackgroundColor<<Alert>> #FFF5E6
+}
+left to right direction
+
+actor "Platform Integrator" as Integrator
+actor "Kernel Platform\nBus" as KernelBus
+actor "System Operator" as Operator
+actor "User Application" as App
+
+rectangle "Driver nxp_simtemp" {
+  usecase "UC-L1\nProvision\ndefault values" as UCL1 <<Core>>
+  usecase "UC-L2\nRegister and expose\nthe driver" as UCL2 <<Core>>
+  usecase "UC-L3\nControl sampling\nstate" as UCL3 <<Core>>
+  usecase "UC-L4\nAdjust simulation\nparameters" as UCL4 <<Core>>
+  usecase "UC-L5\nConsume sample\nstream" as UCL5 <<Data>>
+  usecase "UC-L6\nDetect and handle\nalerts" as UCL6 <<Alert>>
+  usecase "UC-L7\nOne-shot\ncapture" as UCL7 <<Data>>
+  usecase "UC-L8\nQuery statistics" as UCL8 <<Core>>
+}
+
+Integrator --> UCL1
+KernelBus --> UCL2
+Operator --> UCL3
+Operator --> UCL4
+Operator --> UCL7
+Operator --> UCL8
+App --> UCL3
+App --> UCL4
+App --> UCL5
+App --> UCL6
+App --> UCL7
+
+UCL3 ..> UCL2 : «include»
+UCL4 ..> UCL3 : «include»
+UCL5 ..> UCL3 : «include»
+UCL7 ..> UCL4 : «extend»
+UCL6 ..> UCL4 : «extend»
+
+@enduml
+
+@startuml UC_Data
+skinparam style strictuml
+left to right direction
+
+actor "User Application" as UserApp
+actor "System Operator" as SysOp
+
+rectangle "Interfaz de Usuario" {
+  usecase "Configure Sysfs" as uc_sysfs
+  usecase "Run IOCTL\nwith apitest" as uc_ioctl
+  usecase "Wait for events\nwith poll(2)" as uc_poll
+  usecase "Read binary\nsamples" as uc_read
+}
+
+rectangle "Driver nxp_simtemp" {
+  usecase "Update internal\nparameters" as uc_update
+  usecase "Generate samples\nwith hrtimer" as uc_timer
+  usecase "Notify flags and alerts" as uc_alerts
+}
+
+SysOp --> uc_sysfs
+UserApp --> uc_ioctl
+UserApp --> uc_poll
+UserApp --> uc_read
+
+uc_sysfs --> uc_update
+uc_ioctl --> uc_update
+uc_update --> uc_timer
+uc_timer --> uc_read
+uc_timer --> uc_alerts
+uc_poll --> uc_alerts
+uc_read --> UserApp
+
+@enduml
