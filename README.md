@@ -104,6 +104,25 @@ This driver is a `platform_driver`, so a matching `platform_device` must exist i
     sudo dtoverlay simtemp
     ```
 
+### ACPI/x86 Test Setup (No Device Tree)
+
+On ACPI-based hosts there is no Device Tree overlay support. Load the helper module that registers a fake `platform_device` before inserting the driver:
+
+```bash
+make modules
+sudo insmod simtemp_pdev_stub.ko   # registers nxp_simtemp platform_device
+sudo insmod simtemp.ko             # driver now probes and creates /dev/nxp_simtemp
+```
+
+To unload:
+
+```bash
+sudo rmmod simtemp
+sudo rmmod simtemp_pdev_stub
+```
+
+Without `simtemp_pdev_stub.ko` the driver will not bind on ACPI platforms and `/dev/nxp_simtemp` will not appear.
+
 ### 2. Sysfs Interface (Configuration)
 
 The driver exposes its parameters via files in `/sys/class/misc/nxp_simtemp/`. Use `cat` to read and `echo ... | sudo tee ...` to write.
