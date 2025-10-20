@@ -4,3 +4,4 @@
 *.mod.c
 *.o
 *.mod
+*pyc
