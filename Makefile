@@ -13,12 +13,13 @@
 
 KDIR ?= /lib/modules/$(shell uname -r)/build
 
-obj-m := simtemp.o
+obj-m := simtemp.o simtemp_pdev_stub.o
 simtemp-objs := core/simtemp_core.o core/simtemp_dt.o core/simtemp_ringbuf.o
+simtemp_pdev_stub-objs := core/simtemp_pdev_stub.o
 
 ccflags-y += -I$(src)/include
 
-.PHONY: all clean load unload load_nodt modules dtbo
+.PHONY: all clean load unload load_nodt load_acpi unload_acpi modules dtbo
 
 all: dtbo modules
 
@@ -36,6 +37,21 @@ load: all
 	sudo cp -f simtemp.dtbo /lib/firmware/
 	sudo dtoverlay -d . simtemp || echo "Overlay may already be applied."
 	sudo insmod simtemp.ko
+	dmesg | tail -n 5
+
+# ---
+# ACPI / non-Device-Tree helpers:
+# Load the stub platform_device first so nxp_simtemp can probe on x86.
+load_acpi: modules
+	-sudo rmmod simtemp || true
+	-sudo rmmod simtemp_pdev_stub || true
+	sudo insmod simtemp_pdev_stub.ko
+	sudo insmod simtemp.ko
+	dmesg | tail -n 5
+
+unload_acpi:
+	-sudo rmmod simtemp || true
+	-sudo rmmod simtemp_pdev_stub || true
 	dmesg | tail -n 5
 
 load_nodt: all
