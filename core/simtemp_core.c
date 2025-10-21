@@ -118,7 +118,9 @@ static ssize_t state_store(struct device *stdevice, struct device_attribute *att
 	}
 	return ret ? ret : count;
 }
-static DEVICE_ATTR_RW(state);
+/* Demo environment: keep sysfs knobs world-writable so user-space UI works without root. */
+static struct device_attribute dev_attr_state =
+	__ATTR(state, 0666, state_show, state_store);
 
 
 /*
@@ -164,7 +166,8 @@ static ssize_t sampling_ms_store(struct device *dev, struct device_attribute *at
 	sd->u32Period_ms = new_period;
 	return count;
 }
-static DEVICE_ATTR_RW(sampling_ms);
+static struct device_attribute dev_attr_sampling_ms =
+	__ATTR(sampling_ms, 0666, sampling_ms_show, sampling_ms_store);
 
 /*
  * show/store para 'mode' (normal, noisy, ramp)
@@ -210,7 +213,8 @@ static ssize_t mode_store(struct device *dev, struct device_attribute *attr, con
 
 	return count;
 }
-static DEVICE_ATTR_RW(mode);
+static struct device_attribute dev_attr_mode =
+	__ATTR(mode, 0666, mode_show, mode_store);
 
 /*
  * show/store para 'threshold_mC'
@@ -249,7 +253,8 @@ static ssize_t threshold_mC_store(struct device *dev, struct device_attribute *a
 
 	return count;
 }
-static DEVICE_ATTR_RW(threshold_mC);
+static struct device_attribute dev_attr_threshold_mC =
+	__ATTR(threshold_mC, 0666, threshold_mC_show, threshold_mC_store);
 
 /*
  * show/store para 'operation_mode'
@@ -286,7 +291,8 @@ static ssize_t operation_mode_store(struct device *dev, struct device_attribute 
 
 	return count;
 }
-static DEVICE_ATTR_RW(operation_mode);
+static struct device_attribute dev_attr_operation_mode =
+	__ATTR(operation_mode, 0666, operation_mode_show, operation_mode_store);
 
 /*
  * show para 'stats' (Read-Only)
@@ -432,53 +438,36 @@ static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t coun
      * to avoid the overhead of kcalloc/kfree.
      */
     if (samples_to_read == 1) {
-        struct simtemp_sample_v1 sample;
-		bool alert_seen = false;
-		bool overflow_seen = false;
-
-        samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, &sample, 1);
-        if (samples_read > 0) {
-			if (sample.flags & SIMTEMP_FLAG_THR_EDGE)
-				alert_seen = true;
-			if (sample.flags & SIMTEMP_FLAG_OVERFLOW)
-				overflow_seen = true;
-			if (copy_to_user(buf, &sample, sizeof(sample)))
-				return -EFAULT;
-		}
-
-		if (alert_seen)
-			device->boAlertPending = false;
-		if (overflow_seen)
-			device->boOverflowFlag = false;
-    } else {
-        struct simtemp_sample_v1 *tmp_buf;
-        bool alert_seen = false;
-        bool overflow_seen = false;
-
-        tmp_buf = kcalloc(samples_to_read, sizeof(*tmp_buf), GFP_KERNEL);
-        if (!tmp_buf)
-            return -ENOMEM;
-
-        samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, tmp_buf, samples_to_read);
-        if (samples_read > 0) {
-			for (u32 i = 0; i < samples_read; i++) {
-				if (tmp_buf[i].flags & SIMTEMP_FLAG_THR_EDGE)
-					alert_seen = true;
-				if (tmp_buf[i].flags & SIMTEMP_FLAG_OVERFLOW)
-					overflow_seen = true;
-			}
-			if (copy_to_user(buf, tmp_buf, samples_read * sizeof(*tmp_buf))) {
-				kfree(tmp_buf);
-				return -EFAULT;
-			}
-		}
-        kfree(tmp_buf);
-
-		if (alert_seen)
-			device->boAlertPending = false;
-		if (overflow_seen)
-			device->boOverflowFlag = false;
+		/* Esta rama ya no es necesaria, el código generalizado la cubre. */
     }
+
+	struct simtemp_sample_v1 *tmp_buf;
+	bool alert_seen = false;
+	bool overflow_seen = false;
+
+	tmp_buf = kcalloc(samples_to_read, sizeof(*tmp_buf), GFP_KERNEL);
+	if (!tmp_buf)
+		return -ENOMEM;
+
+	samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, tmp_buf, samples_to_read);
+	if (samples_read > 0) {
+		for (u32 i = 0; i < samples_read; i++) {
+			if (tmp_buf[i].flags & SIMTEMP_FLAG_THR_EDGE)
+				alert_seen = true;
+			if (tmp_buf[i].flags & SIMTEMP_FLAG_OVERFLOW)
+				overflow_seen = true;
+		}
+		if (copy_to_user(buf, tmp_buf, samples_read * sizeof(*tmp_buf))) {
+			kfree(tmp_buf);
+			return -EFAULT;
+		}
+	}
+	kfree(tmp_buf);
+
+	if (alert_seen)
+		device->boAlertPending = false;
+	if (overflow_seen)
+		device->boOverflowFlag = false;
 
     return samples_read * sizeof(struct simtemp_sample_v1);
 }
