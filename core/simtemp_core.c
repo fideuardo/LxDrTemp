@@ -118,9 +118,7 @@ static ssize_t state_store(struct device *stdevice, struct device_attribute *att
 	}
 	return ret ? ret : count;
 }
-/* Demo environment: keep sysfs knobs world-writable so user-space UI works without root. */
-static struct device_attribute dev_attr_state =
-	__ATTR(state, 0666, state_show, state_store);
+static DEVICE_ATTR_RW(state);
 
 
 /*
@@ -166,8 +164,7 @@ static ssize_t sampling_ms_store(struct device *dev, struct device_attribute *at
 	sd->u32Period_ms = new_period;
 	return count;
 }
-static struct device_attribute dev_attr_sampling_ms =
-	__ATTR(sampling_ms, 0666, sampling_ms_show, sampling_ms_store);
+static DEVICE_ATTR_RW(sampling_ms);
 
 /*
  * show/store para 'mode' (normal, noisy, ramp)
@@ -213,8 +210,7 @@ static ssize_t mode_store(struct device *dev, struct device_attribute *attr, con
 
 	return count;
 }
-static struct device_attribute dev_attr_mode =
-	__ATTR(mode, 0666, mode_show, mode_store);
+static DEVICE_ATTR_RW(mode);
 
 /*
  * show/store para 'threshold_mC'
@@ -253,8 +249,7 @@ static ssize_t threshold_mC_store(struct device *dev, struct device_attribute *a
 
 	return count;
 }
-static struct device_attribute dev_attr_threshold_mC =
-	__ATTR(threshold_mC, 0666, threshold_mC_show, threshold_mC_store);
+static DEVICE_ATTR_RW(threshold_mC);
 
 /*
  * show/store para 'operation_mode'
@@ -291,8 +286,7 @@ static ssize_t operation_mode_store(struct device *dev, struct device_attribute 
 
 	return count;
 }
-static struct device_attribute dev_attr_operation_mode =
-	__ATTR(operation_mode, 0666, operation_mode_show, operation_mode_store);
+static DEVICE_ATTR_RW(operation_mode);
 
 /*
  * show para 'stats' (Read-Only)
