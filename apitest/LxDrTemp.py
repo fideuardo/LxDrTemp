@@ -197,6 +197,21 @@ class SimTempDriver:
         assert self._fd is not None
         return self._fd
 
+    def get_driver_version(self) -> str:
+        """
+        Read the kernel module version from sysfs.
+
+        Returns:
+            The version string if found, otherwise 'unknown'.
+        """
+        # The module name is the basename of the sysfs path.
+        module_name = self.sysfs_base.name
+        version_path = Path(f"/sys/module/{module_name}/version")
+        try:
+            return version_path.read_text(encoding="ascii").strip()
+        except FileNotFoundError:
+            return "unknown"
+
     # -- Public helpers ---------------------------------------------------------
 
     def start(self) -> None:
