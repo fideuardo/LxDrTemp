@@ -427,14 +427,6 @@ static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t coun
     if (samples_to_read == 0)
         return -EINVAL; /* User buffer is too small for even one sample */
 
-    /*
-     * OPTIMIZATION: For small reads (like one-shot), use a stack variable
-     * to avoid the overhead of kcalloc/kfree.
-     */
-    if (samples_to_read == 1) {
-		/* Esta rama ya no es necesaria, el código generalizado la cubre. */
-    }
-
 	struct simtemp_sample_v1 *tmp_buf;
 	bool alert_seen = false;
 	bool overflow_seen = false;

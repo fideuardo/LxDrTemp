@@ -54,26 +54,22 @@ bool nxp_simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct 
     spin_lock_irqsave(&srRingBuff->lock, ulflags);
     u32bufferused = (srRingBuff->u32head - srRingBuff->u32tail) & (srRingBuff->u32BufferSize - 1);
 
-    /*available space*/
-    if(u32bufferused < srRingBuff->u32BufferSize - 1)
-    {
-       u32next = srRingBuff->u32head;
-       srRingBuff->stBuffer[u32next] = *pstSample;
-       srRingBuff->u32head = (srRingBuff->u32head + 1) & (srRingBuff->u32BufferSize - 1);
-    }
-    else
-    {
-         /*Oldest element can be deletedd*/
-        if(srRingBuff->boDropOldest)
-        {
-            /* Sobrescribir la muestra más antigua avanzando el tail */
-            u32next = srRingBuff->u32head;
-            srRingBuff->stBuffer[u32next] = *pstSample;
-            srRingBuff->u32head = (srRingBuff->u32head + 1) & (srRingBuff->u32BufferSize - 1);
+    /* Check if the buffer is full */
+    if (u32bufferused >= srRingBuff->u32BufferSize - 1) {
+        if (srRingBuff->boDropOldest) {
+            /* Buffer is full, but we can overwrite. Advance tail. */
             srRingBuff->u32tail = (srRingBuff->u32tail + 1) & (srRingBuff->u32BufferSize - 1);
             srRingBuff->u32OverRuns++;
+        } else {
+            /* Buffer is full and we cannot overwrite. */
+            status = false;
         }
-        else
+    }
+
+    if (status) {
+        srRingBuff->stBuffer[srRingBuff->u32head] = *pstSample;
+        srRingBuff->u32head = (srRingBuff->u32head + 1) & (srRingBuff->u32BufferSize - 1);
+    } else
         {
             status = false;
         }
