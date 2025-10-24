@@ -44,7 +44,6 @@ bool nxp_simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct 
 {
     unsigned long ulflags;
     u32 u32bufferused;
-    u32 u32next;
     bool status = true;
 
     /*lock spin: start security zone*/
