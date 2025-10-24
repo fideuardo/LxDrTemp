@@ -19,19 +19,26 @@ simtemp_pdev_stub-objs := core/simtemp_pdev_stub.o
 
 ccflags-y += -I$(src)/include
 
-.PHONY: all clean load unload load_nodt load_acpi unload_acpi modules dtbo
+CFLAGS_USER ?= -O2 -g -std=c11 -Wall -Wextra
 
-all: dtbo modules
+.PHONY: all clean load unload load_nodt load_acpi unload_acpi modules dtbo apitest
 
 modules:
 	$(MAKE) -C $(KDIR) M=$(CURDIR) modules
+
+all: dtbo modules apitest
+
+apitest: apitest/apitest
+
+apitest/apitest: apitest/apitest.c include/uapi/simtemp_uapi.h
+	$(CC) $(CFLAGS_USER) -Iinclude -o $@ $<
 
 dtbo:
 	dtc -@ -I dts -O dtb -o simtemp.dtbo nxp-simtemp-overlay.dts
 
 clean:
 	$(MAKE) -C $(KDIR) M=$(CURDIR) clean
-	rm -f *.dtbo
+	rm -f *.dtbo apitest/apitest
 load: all
 	-sudo rmmod simtemp || true
 	sudo cp -f simtemp.dtbo /lib/firmware/

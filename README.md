@@ -222,6 +222,9 @@ The `apitest` utility provides a command-line wrapper for the `ioctl` interface.
     # Inspect / adjust the temperature threshold
     ./apitest /dev/nxp_simtemp get_threshold
     ./apitest /dev/nxp_simtemp set_threshold 28000
+
+    # Run the automated self-test (sets a low threshold and checks for alert)
+    ./apitest /dev/nxp_simtemp --test
     ```
 
 ## Project Documentation
