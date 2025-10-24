@@ -55,24 +55,20 @@ bool nxp_simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct 
     u32bufferused = (srRingBuff->u32head - srRingBuff->u32tail) & (srRingBuff->u32BufferSize - 1);
 
     /* Check if the buffer is full */
-    if (u32bufferused >= srRingBuff->u32BufferSize - 1) {
+    if (u32bufferused >= srRingBuff->u32BufferSize - 1) { /* is full? */
         if (srRingBuff->boDropOldest) {
             /* Buffer is full, but we can overwrite. Advance tail. */
             srRingBuff->u32tail = (srRingBuff->u32tail + 1) & (srRingBuff->u32BufferSize - 1);
             srRingBuff->u32OverRuns++;
         } else {
             /* Buffer is full and we cannot overwrite. */
-            status = false;
+            status = false; /* Report failure */
         }
     }
 
     if (status) {
         srRingBuff->stBuffer[srRingBuff->u32head] = *pstSample;
         srRingBuff->u32head = (srRingBuff->u32head + 1) & (srRingBuff->u32BufferSize - 1);
-    } else
-        {
-            status = false;
-        }
     }
     spin_unlock_irqrestore(&srRingBuff->lock, ulflags);
     return status;
