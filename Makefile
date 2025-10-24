@@ -23,7 +23,7 @@ CFLAGS_USER ?= -O2 -g -std=c11 -Wall -Wextra
 
 .PHONY: all clean load unload load_nodt load_acpi unload_acpi modules dtbo apitest
 
-modules:
+modules: dtbo
 	$(MAKE) -C $(KDIR) M=$(CURDIR) modules
 
 all: dtbo modules apitest

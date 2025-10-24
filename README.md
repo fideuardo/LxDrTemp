@@ -236,7 +236,7 @@ cd kernel
 ./scripts/run_selftest.sh
 ```
 
-This script requires sudo privileges because it copies the `simtemp.dtbo` overlay into `/boot/overlays/`, applies it with `dtoverlay`, and loads the `simtemp.ko` module.
+This script requires sudo privileges. It rebuilds `simtemp.dtbo` if needed, refreshes `/boot/overlays/simtemp.dtbo`, applies the overlay on-demand (or detects if it is already enabled via `config.txt`), loads `simtemp.ko`, runs the CLI self-test, prints stats, and removes everything afterwards.
 
 ## Project Documentation
 

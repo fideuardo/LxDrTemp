@@ -11,9 +11,11 @@ DTBO_PATH="${SCRIPT_ROOT}/simtemp.dtbo"
 APITEST_BIN="${SCRIPT_ROOT}/apitest/apitest"
 DEV_NODE="/dev/nxp_simtemp"
 OVERLAY_NAME="simtemp"
+BOOT_CONFIG_CANDIDATES=("/boot/firmware/config.txt" "/boot/config.txt")
 
 overlay_loaded=false
 module_loaded=false
+boot_overlay_configured=false
 
 need_cmd() {
 	command -v "$1" >/dev/null 2>&1 || {
@@ -27,6 +29,17 @@ require_file() {
 		log "Required file not found: $1"
 		exit 1
 	fi
+}
+
+ensure_dtbo() {
+	if [[ -f "${DTBO_PATH}" ]]; then
+		return
+	fi
+	log "DTBO not found, invoking 'make dtbo'"
+	(
+		cd "${SCRIPT_ROOT}"
+		make dtbo
+	)
 }
 
 cleanup_overlay() {
@@ -54,8 +67,10 @@ main() {
 	need_cmd insmod
 	need_cmd lsmod
 	need_cmd "${APITEST_BIN}"
+	need_cmd make
 
 	require_file "${MODULE_PATH}"
+	ensure_dtbo
 	require_file "${DTBO_PATH}"
 
 	trap cleanup EXIT
@@ -65,16 +80,34 @@ main() {
 		sudo rmmod simtemp
 	fi
 
-	log "Copying overlay into /boot/overlays/"
-	if [[ ! -d /boot/overlays ]]; then
-		log "/boot/overlays directory not found; is this running on Raspberry Pi?"
-		exit 1
-	fi
+	for cfg in "${BOOT_CONFIG_CANDIDATES[@]}"; do
+		if [[ -f "$cfg" ]] && grep -Eq '^[[:space:]]*dtoverlay=simtemp([[:space:]]|$)' "$cfg"; then
+			log "Overlay already configured in ${cfg}; skipping runtime dtoverlay"
+			boot_overlay_configured=true
+			break
+		fi
+	done
 
-	sudo cp "${DTBO_PATH}" "/boot/overlays/${OVERLAY_NAME}.dtbo"
-	sudo dtoverlay -r "${OVERLAY_NAME}" || true
-	sudo dtoverlay "${OVERLAY_NAME}"
-	overlay_loaded=true
+	if [[ "${boot_overlay_configured}" == false ]]; then
+		log "Copying overlay into /boot/overlays/"
+		if [[ ! -d /boot/overlays ]]; then
+			log "/boot/overlays directory not found; is this running on Raspberry Pi?"
+			exit 1
+		fi
+
+		sudo cp "${DTBO_PATH}" "/boot/overlays/${OVERLAY_NAME}.dtbo"
+		sudo dtoverlay -r "${OVERLAY_NAME}" || true
+		if ! sudo dtoverlay "${OVERLAY_NAME}"; then
+			log "Failed to apply overlay ${OVERLAY_NAME}"
+			exit 1
+		fi
+		overlay_loaded=true
+	else
+		log "Ensuring /boot/overlays/${OVERLAY_NAME}.dtbo is up to date"
+		if [[ -d /boot/overlays ]]; then
+			sudo cp "${DTBO_PATH}" "/boot/overlays/${OVERLAY_NAME}.dtbo"
+		fi
+	fi
 
 	log "Loading module ${MODULE_PATH}"
 	sudo insmod "${MODULE_PATH}"
