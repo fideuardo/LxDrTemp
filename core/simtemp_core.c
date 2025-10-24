@@ -427,15 +427,15 @@ static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t coun
     if (samples_to_read == 0)
         return -EINVAL; /* User buffer is too small for even one sample */
 
-	struct simtemp_sample_v1 *tmp_buf;
-	bool alert_seen = false;
-	bool overflow_seen = false;
+    struct simtemp_sample_v1 *tmp_buf;
+    bool alert_seen = false;
+    bool overflow_seen = false;
 
-	tmp_buf = kcalloc(samples_to_read, sizeof(*tmp_buf), GFP_KERNEL);
-	if (!tmp_buf)
-		return -ENOMEM;
+    tmp_buf = kcalloc(samples_to_read, sizeof(*tmp_buf), GFP_KERNEL);
+    if (!tmp_buf)
+        return -ENOMEM;
 
-	samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, tmp_buf, samples_to_read);
+    samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, tmp_buf, samples_to_read);
 	if (samples_read > 0) {
 		for (u32 i = 0; i < samples_read; i++) {
 			if (tmp_buf[i].flags & SIMTEMP_FLAG_THR_EDGE)
