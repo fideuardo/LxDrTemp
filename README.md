@@ -222,7 +222,21 @@ The `apitest` utility provides a command-line wrapper for the `ioctl` interface.
     # Inspect / adjust the temperature threshold
     ./apitest /dev/nxp_simtemp get_threshold
     ./apitest /dev/nxp_simtemp set_threshold 28000
+
+    # Run the automated self-test (sets a low threshold and checks for alert)
+    ./apitest /dev/nxp_simtemp --test
     ```
+
+### 5. Automated Self-Test Script
+
+For a fully automated cycle that installs the overlay, loads the module, runs the CLI self-test, prints stats, and removes everything afterwards, use:
+
+```bash
+cd kernel
+./scripts/run_selftest.sh
+```
+
+This script requires sudo privileges. It rebuilds `simtemp.dtbo` and the `apitest` CLI if needed, refreshes `/boot/overlays/simtemp.dtbo`, applies the overlay on-demand (or detects if it is already enabled via `config.txt`), loads `simtemp.ko`, runs the CLI self-test, prints stats, and removes everything afterwards.
 
 ## Project Documentation
 

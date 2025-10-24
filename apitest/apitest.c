@@ -1,10 +1,17 @@
+#include <errno.h>
+#include <stdbool.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <fcntl.h>
-#include <unistd.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
+
 #include "../include/uapi/simtemp_uapi.h" // Incluye las definiciones de tu driver
+
+#define SIMTEMP_MODE_ONESHOT 0u
+#define SIMTEMP_MODE_CONTINUOUS 1u
 
 static void print_usage(const char *prog_name) {
     fprintf(stderr, "Usage: %s <device> <command> [args]\n", prog_name);
@@ -18,6 +25,113 @@ static void print_usage(const char *prog_name) {
     fprintf(stderr, "  set_period <ms>          - Set sampling period in ms\n");
     fprintf(stderr, "  get_threshold            - Get threshold in milli-Celsius\n");
     fprintf(stderr, "  set_threshold <mC>       - Set threshold in milli-Celsius (0-150000)\n");
+    fprintf(stderr, "  --test                   - Run self-test (sets low threshold and checks alert)\n");
+}
+
+static int run_self_test(int fd) {
+    const __u32 test_period_ms = 100;
+    const __s32 test_threshold_mc = 1000; /* 1°C, guaranteed below nominal temp */
+    const int max_attempts = 4;
+    const int poll_timeout_ms = (int)(test_period_ms * 2 + 200);
+    __u32 original_mode = SIMTEMP_MODE_CONTINUOUS;
+    __u32 original_period = 0;
+    __s32 original_threshold = 0;
+    __u32 mode = SIMTEMP_MODE_CONTINUOUS;
+    __u32 period = test_period_ms;
+    __s32 threshold = test_threshold_mc;
+    int ret = 0;
+    bool alert_detected = false;
+
+    /* Capture current configuration so we can restore it afterwards. */
+    if (ioctl(fd, SIMTEMP_IOC_GET_MODE, &original_mode) < 0) {
+        perror("get_mode failed");
+        return -1;
+    }
+    if (ioctl(fd, SIMTEMP_IOC_GET_PERIOD, &original_period) < 0) {
+        perror("get_period failed");
+        return -1;
+    }
+    if (ioctl(fd, SIMTEMP_IOC_GET_THRESHOLD, &original_threshold) < 0) {
+        perror("get_threshold failed");
+        return -1;
+    }
+
+    /* Ensure sampler is stopped before reconfiguration. */
+    ioctl(fd, SIMTEMP_IOC_STOP);
+
+    if (ioctl(fd, SIMTEMP_IOC_SET_MODE, &mode) < 0) {
+        perror("set_mode failed");
+        goto restore;
+    }
+    if (ioctl(fd, SIMTEMP_IOC_SET_PERIOD, &period) < 0) {
+        perror("set_period failed");
+        goto restore;
+    }
+    if (ioctl(fd, SIMTEMP_IOC_SET_THRESHOLD, &threshold) < 0) {
+        perror("set_threshold failed");
+        goto restore;
+    }
+
+    if (ioctl(fd, SIMTEMP_IOC_START) < 0) {
+        perror("start failed");
+        goto restore;
+    }
+
+    for (int attempt = 0; attempt < max_attempts && !alert_detected; ++attempt) {
+        struct pollfd pfd = {
+            .fd = fd,
+            .events = POLLIN | POLLPRI,
+            .revents = 0,
+        };
+        ret = poll(&pfd, 1, poll_timeout_ms);
+        if (ret < 0) {
+            perror("poll failed");
+            break;
+        }
+        if (ret == 0) {
+            fprintf(stderr, "[self-test] Timeout waiting for sample (attempt %d)\n", attempt + 1);
+            continue;
+        }
+
+        if (pfd.revents & (POLLIN | POLLPRI)) {
+            struct simtemp_sample_v1 sample;
+            ssize_t bytes = read(fd, &sample, sizeof(sample));
+            if (bytes < 0) {
+                perror("read failed");
+                break;
+            }
+            if (bytes != sizeof(sample)) {
+                fprintf(stderr, "[self-test] Short read: expected %zu, got %zd\n",
+                        sizeof(sample), bytes);
+                continue;
+            }
+
+            printf("[self-test] Sample #%d: temp=%.3f°C flags=0x%08X\n",
+                   attempt + 1, sample.temp_mC / 1000.0, sample.flags);
+            if (sample.flags & SIMTEMP_FLAG_THR_EDGE) {
+                alert_detected = true;
+            }
+        }
+    }
+
+    ioctl(fd, SIMTEMP_IOC_STOP);
+
+    if (!alert_detected) {
+        fprintf(stderr, "[self-test] ALERT flag not observed within %d attempts.\n", max_attempts);
+        ret = -1;
+        goto restore;
+    }
+
+    printf("[self-test] PASS: threshold alert detected within %d attempts.\n", max_attempts);
+    ret = 0;
+
+restore:
+    /* Restore previous configuration. Ignore errors during cleanup. */
+    ioctl(fd, SIMTEMP_IOC_STOP);
+    ioctl(fd, SIMTEMP_IOC_SET_PERIOD, &original_period);
+    ioctl(fd, SIMTEMP_IOC_SET_MODE, &original_mode);
+    ioctl(fd, SIMTEMP_IOC_SET_THRESHOLD, &original_threshold);
+    return ret;
 }
 
 int main(int argc, char *argv[]) {
@@ -97,6 +211,8 @@ int main(int argc, char *argv[]) {
         __s32 threshold = atoi(argv[3]);
         ret = ioctl(fd, SIMTEMP_IOC_SET_THRESHOLD, &threshold);
         if (ret == 0) printf("Threshold set successfully.\n");
+    } else if (strcmp(command_str, "--test") == 0 || strcmp(command_str, "test") == 0) {
+        ret = run_self_test(fd);
     } else {
         fprintf(stderr, "Error: Unknown command '%s'\n", command_str);
         print_usage(argv[0]);
