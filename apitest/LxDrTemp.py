@@ -197,6 +197,21 @@ class SimTempDriver:
         assert self._fd is not None
         return self._fd
 
+    def get_driver_version(self) -> str:
+        """
+        Read the kernel module version from sysfs.
+
+        Returns:
+            The version string if found, otherwise 'unknown'.
+        """
+        # The module name is the basename of the sysfs path.
+        module_name = self.sysfs_base.name
+        version_path = Path(f"/sys/module/{module_name}/version")
+        try:
+            return version_path.read_text(encoding="ascii").strip()
+        except FileNotFoundError:
+            return "unknown"
+
     # -- Public helpers ---------------------------------------------------------
 
     def start(self) -> None:
@@ -322,7 +337,12 @@ class SimTempDriver:
     def _write_sysfs(self, name: str, value: str) -> None:
         path = self._sysfs_path(name)
         text = value if value.endswith("\n") else f"{value}\n"
-        path.write_text(text, encoding="ascii")
+        try:
+            path.write_text(text, encoding="ascii")
+        except PermissionError as exc:
+            raise SimTempError(
+                f"Permission denied writing to {path}. Adjust permissions or run as root."
+            ) from exc
 
     def _ioctl_noarg(self, cmd: int) -> None:
         self._require_write_access()

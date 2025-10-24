@@ -39,19 +39,11 @@ int nxp_simtemp_rb_init(struct nxp_simtemp_dev *sdev, u32 u32size, bool boDropOl
 	return 0;
 }
 
-static u32 simtemp__u32levellock(struct simtemp_ringbuffer *srRingBuff)
-{
-    u32 u32value;
-    u32value = srRingBuff->u32head - srRingBuff->u32tail;
-    return u32value;
-}
-
 /* FIX: Typo en el nombre de la estructura */
 bool nxp_simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct simtemp_sample_v1 *pstSample)
 {
     unsigned long ulflags;
     u32 u32bufferused;
-    u32 u32next;
     bool status = true;
 
     /*lock spin: start security zone*/
@@ -59,32 +51,23 @@ bool nxp_simtemp_ringbuffer_write(struct simtemp_ringbuffer *srRingBuff, struct 
      * Para un diseño lockless, se usarían barreras de memoria como smp_store_release() aquí.
      */
     spin_lock_irqsave(&srRingBuff->lock, ulflags);
-    u32bufferused = srRingBuff->u32head - srRingBuff->u32tail;
+    u32bufferused = (srRingBuff->u32head - srRingBuff->u32tail) & (srRingBuff->u32BufferSize - 1);
 
-    /*available space*/
-    if(u32bufferused < srRingBuff->u32BufferSize)
-    {
-       u32next = srRingBuff->u32head % srRingBuff->u32BufferSize;
-       srRingBuff->stBuffer[u32next] = *pstSample;
-       srRingBuff->u32head++;
+    /* Check if the buffer is full */
+    if (u32bufferused >= srRingBuff->u32BufferSize - 1) { /* is full? */
+        if (srRingBuff->boDropOldest) {
+            /* Buffer is full, but we can overwrite. Advance tail. */
+            srRingBuff->u32tail = (srRingBuff->u32tail + 1) & (srRingBuff->u32BufferSize - 1);
+            srRingBuff->u32OverRuns++;
+        } else {
+            /* Buffer is full and we cannot overwrite. */
+            status = false; /* Report failure */
+        }
     }
-    else
-    {
-         /*Oldest element can be deletedd*/
-        if(srRingBuff->boDropOldest)
-        {
-            /* CORRECCIÓN: Sobrescribir la muestra más antigua avanzando el tail */
-            u32next = srRingBuff->u32head % srRingBuff->u32BufferSize;
-            srRingBuff->stBuffer[u32next] = *pstSample;
-            srRingBuff->u32head++;
-            srRingBuff->u32tail++; /* <-- Esto es crucial, se avanza el puntero de lectura */
-            srRingBuff->u32OverRuns++;
-        }
-        else
-        {
-            srRingBuff->u32OverRuns++;
-            status = false;
-        }
+
+    if (status) {
+        srRingBuff->stBuffer[srRingBuff->u32head] = *pstSample;
+        srRingBuff->u32head = (srRingBuff->u32head + 1) & (srRingBuff->u32BufferSize - 1);
     }
     spin_unlock_irqrestore(&srRingBuff->lock, ulflags);
     return status;
@@ -101,7 +84,7 @@ u32 nxp_simtemp_ringbuffer_read(struct simtemp_ringbuffer *srRingBuff, struct si
     spin_lock_irqsave(&srRingBuff->lock, ulflags);
     /* NOTE: Para un diseño lockless, se usaría smp_load_acquire() para leer el 'head'. */
 
-    u32bufferused = srRingBuff->u32head - srRingBuff->u32tail;
+    u32bufferused = (srRingBuff->u32head - srRingBuff->u32tail) & (srRingBuff->u32BufferSize - 1);
 
     /* CORRECCIÓN: Limitar la lectura a la cantidad de datos disponibles o al espacio del usuario,
      * lo que sea menor.
@@ -114,9 +97,9 @@ u32 nxp_simtemp_ringbuffer_read(struct simtemp_ringbuffer *srRingBuff, struct si
     /* Copiar los datos al buffer del usuario */
     for (u32readcount = 0; u32readcount < u32Count; u32readcount++)
     {
-        u32next = srRingBuff->u32tail % srRingBuff->u32BufferSize;
+        u32next = srRingBuff->u32tail;
         pstSample[u32readcount] = srRingBuff->stBuffer[u32next];
-        srRingBuff->u32tail++;
+        srRingBuff->u32tail = (srRingBuff->u32tail + 1) & (srRingBuff->u32BufferSize - 1);
     }
 
     spin_unlock_irqrestore(&srRingBuff->lock, ulflags);
@@ -142,7 +125,7 @@ u32 nxp_simtemp_ringbuffer_level(struct simtemp_ringbuffer *srRingBuff)
     unsigned long ulflags;
     u32 u32value;
     spin_lock_irqsave(&srRingBuff->lock, ulflags);
-    u32value = simtemp__u32levellock(srRingBuff);
+    u32value = (srRingBuff->u32head - srRingBuff->u32tail) & (srRingBuff->u32BufferSize - 1);
     spin_unlock_irqrestore(&srRingBuff->lock, ulflags);
     return u32value;
 }

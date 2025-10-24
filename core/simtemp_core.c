@@ -427,58 +427,33 @@ static ssize_t nxp_simtemp_read(struct file *file, char __user *buf, size_t coun
     if (samples_to_read == 0)
         return -EINVAL; /* User buffer is too small for even one sample */
 
-    /*
-     * OPTIMIZATION: For small reads (like one-shot), use a stack variable
-     * to avoid the overhead of kcalloc/kfree.
-     */
-    if (samples_to_read == 1) {
-        struct simtemp_sample_v1 sample;
-		bool alert_seen = false;
-		bool overflow_seen = false;
+    struct simtemp_sample_v1 *tmp_buf;
+    bool alert_seen = false;
+    bool overflow_seen = false;
 
-        samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, &sample, 1);
-        if (samples_read > 0) {
-			if (sample.flags & SIMTEMP_FLAG_THR_EDGE)
+    tmp_buf = kcalloc(samples_to_read, sizeof(*tmp_buf), GFP_KERNEL);
+    if (!tmp_buf)
+        return -ENOMEM;
+
+    samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, tmp_buf, samples_to_read);
+	if (samples_read > 0) {
+		for (u32 i = 0; i < samples_read; i++) {
+			if (tmp_buf[i].flags & SIMTEMP_FLAG_THR_EDGE)
 				alert_seen = true;
-			if (sample.flags & SIMTEMP_FLAG_OVERFLOW)
+			if (tmp_buf[i].flags & SIMTEMP_FLAG_OVERFLOW)
 				overflow_seen = true;
-			if (copy_to_user(buf, &sample, sizeof(sample)))
-				return -EFAULT;
 		}
-
-		if (alert_seen)
-			device->boAlertPending = false;
-		if (overflow_seen)
-			device->boOverflowFlag = false;
-    } else {
-        struct simtemp_sample_v1 *tmp_buf;
-        bool alert_seen = false;
-        bool overflow_seen = false;
-
-        tmp_buf = kcalloc(samples_to_read, sizeof(*tmp_buf), GFP_KERNEL);
-        if (!tmp_buf)
-            return -ENOMEM;
-
-        samples_read = nxp_simtemp_ringbuffer_read(&device->stRingBuff, tmp_buf, samples_to_read);
-        if (samples_read > 0) {
-			for (u32 i = 0; i < samples_read; i++) {
-				if (tmp_buf[i].flags & SIMTEMP_FLAG_THR_EDGE)
-					alert_seen = true;
-				if (tmp_buf[i].flags & SIMTEMP_FLAG_OVERFLOW)
-					overflow_seen = true;
-			}
-			if (copy_to_user(buf, tmp_buf, samples_read * sizeof(*tmp_buf))) {
-				kfree(tmp_buf);
-				return -EFAULT;
-			}
+		if (copy_to_user(buf, tmp_buf, samples_read * sizeof(*tmp_buf))) {
+			kfree(tmp_buf);
+			return -EFAULT;
 		}
-        kfree(tmp_buf);
+	}
+	kfree(tmp_buf);
 
-		if (alert_seen)
-			device->boAlertPending = false;
-		if (overflow_seen)
-			device->boOverflowFlag = false;
-    }
+	if (alert_seen)
+		device->boAlertPending = false;
+	if (overflow_seen)
+		device->boOverflowFlag = false;
 
     return samples_read * sizeof(struct simtemp_sample_v1);
 }
