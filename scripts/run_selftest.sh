@@ -66,12 +66,20 @@ main() {
 	need_cmd dtoverlay
 	need_cmd insmod
 	need_cmd lsmod
-	need_cmd "${APITEST_BIN}"
 	need_cmd make
 
 	require_file "${MODULE_PATH}"
 	ensure_dtbo
 	require_file "${DTBO_PATH}"
+
+	if [[ ! -x "${APITEST_BIN}" ]] || [[ "${SCRIPT_ROOT}/apitest/apitest.c" -nt "${APITEST_BIN}" ]]; then
+		log "Building apitest utility"
+		(
+			cd "${SCRIPT_ROOT}"
+			make apitest
+		)
+	fi
+	need_cmd "${APITEST_BIN}"
 
 	trap cleanup EXIT
 
