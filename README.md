@@ -227,6 +227,17 @@ The `apitest` utility provides a command-line wrapper for the `ioctl` interface.
     ./apitest /dev/nxp_simtemp --test
     ```
 
+### 5. Automated Self-Test Script
+
+For a fully automated cycle that installs the overlay, loads the module, runs the CLI self-test, prints stats, and removes everything afterwards, use:
+
+```bash
+cd kernel
+./scripts/run_selftest.sh
+```
+
+This script requires sudo privileges because it copies the `simtemp.dtbo` overlay into `/boot/overlays/`, applies it with `dtoverlay`, and loads the `simtemp.ko` module.
+
 ## Project Documentation
 
 This project includes detailed design and requirements documentation:
